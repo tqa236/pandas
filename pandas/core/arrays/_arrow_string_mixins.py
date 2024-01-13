@@ -45,14 +45,13 @@ class ArrowStringArrayMixin:
         lengths = pc.utf8_length(self._pa_array)
         if i >= 0:
             out_of_bounds = pc.greater_equal(i, lengths)
-            start = i
             stop = i + 1
             step = 1
         else:
             out_of_bounds = pc.greater(-i, lengths)
-            start = i
             stop = i - 1
             step = -1
+        start = i
         not_out_of_bounds = pc.invert(out_of_bounds.fill_null(True))
         selected = pc.utf8_slice_codeunits(
             self._pa_array, start=start, stop=stop, step=step

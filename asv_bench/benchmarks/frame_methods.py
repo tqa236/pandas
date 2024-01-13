@@ -153,7 +153,7 @@ class Iteration:
         self.df = DataFrame(np.random.randn(N * 10, N))
         self.df2 = DataFrame(np.random.randn(N * 50, 10))
         self.df3 = DataFrame(
-            np.random.randn(N, 5 * N), columns=["C" + str(c) for c in range(N * 5)]
+            np.random.randn(N, 5 * N), columns=[f"C{str(c)}" for c in range(N * 5)]
         )
         self.df4 = DataFrame(np.random.randn(N * 1000, 10))
 
@@ -179,7 +179,7 @@ class Iteration:
         next(self.df4.itertuples())
 
     def time_itertuples(self):
-        for row in self.df4.itertuples():
+        for _ in self.df4.itertuples():
             pass
 
     def time_itertuples_to_list(self):
@@ -195,7 +195,7 @@ class Iteration:
         return next(self.df4.itertuples())
 
     def peakmem_itertuples(self):
-        for row in self.df4.itertuples():
+        for _ in self.df4.itertuples():
             pass
 
     def mem_itertuples_to_list(self):
@@ -211,7 +211,7 @@ class Iteration:
         next(self.df4.itertuples(index=False, name=None))
 
     def time_itertuples_raw_tuples(self):
-        for row in self.df4.itertuples(index=False, name=None):
+        for _ in self.df4.itertuples(index=False, name=None):
             pass
 
     def time_itertuples_raw_tuples_to_list(self):
@@ -227,7 +227,7 @@ class Iteration:
         next(self.df4.itertuples(index=False, name=None))
 
     def peakmem_itertuples_raw(self):
-        for row in self.df4.itertuples(index=False, name=None):
+        for _ in self.df4.itertuples(index=False, name=None):
             pass
 
     def mem_itertuples_raw_to_list(self):
@@ -237,7 +237,7 @@ class Iteration:
         list(self.df4.itertuples(index=False, name=None))
 
     def time_iterrows(self):
-        for row in self.df.iterrows():
+        for _ in self.df.iterrows():
             pass
 
 

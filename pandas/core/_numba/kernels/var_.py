@@ -163,7 +163,7 @@ def sliding_var(
     # na_position is empty list since float64 can already hold nans
     # Do list comprehension, since numba cannot figure out that na_pos is
     # empty list of ints on its own
-    na_pos = [0 for i in range(0)]
+    na_pos = [0 for _ in range(0)]
     return output, na_pos
 
 
@@ -241,5 +241,5 @@ def grouped_var(
     # na_position is empty list since float64 can already hold nans
     # Do list comprehension, since numba cannot figure out that na_pos is
     # empty list of ints on its own
-    na_pos = [0 for i in range(0)]
+    na_pos = [0 for _ in range(0)]
     return output, na_pos

@@ -36,11 +36,7 @@ def sliding_min_max(
     W: list = []
     for i in range(N):
         curr_win_size = end[i] - start[i]
-        if i == 0:
-            st = start[i]
-        else:
-            st = end[i - 1]
-
+        st = start[i] if i == 0 else end[i - 1]
         for k in range(st, end[i]):
             ai = values[k]
             if not np.isnan(ai):
@@ -70,12 +66,11 @@ def sliding_min_max(
         # Save output based on index in input value array
         if Q and curr_win_size > 0 and nobs >= min_periods:
             output[i] = values[Q[0]]
-        else:
-            if values.dtype.kind != "i":
-                output[i] = np.nan
-            else:
-                na_pos.append(i)
+        elif values.dtype.kind == "i":
+            na_pos.append(i)
 
+        else:
+            output[i] = np.nan
     return output, na_pos
 
 
@@ -90,7 +85,6 @@ def grouped_min_max(
 ) -> tuple[np.ndarray, list[int]]:
     N = len(labels)
     nobs = np.zeros(ngroups, dtype=np.int64)
-    na_pos = []
     output = np.empty(ngroups, dtype=result_dtype)
 
     for i in range(N):
@@ -110,16 +104,7 @@ def grouped_min_max(
             output[lab] = val
             continue
 
-        if is_max:
-            if val > output[lab]:
-                output[lab] = val
-        else:
-            if val < output[lab]:
-                output[lab] = val
-
-    # Set labels that don't satisfy min_periods as np.nan
-    for lab, count in enumerate(nobs):
-        if count < min_periods:
-            na_pos.append(lab)
-
+        if is_max and val > output[lab] or not is_max and val < output[lab]:
+            output[lab] = val
+    na_pos = [lab for lab, count in enumerate(nobs) if count < min_periods]
     return output, na_pos

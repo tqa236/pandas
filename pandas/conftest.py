@@ -135,60 +135,58 @@ def ignore_doctest_warning(item: pytest.Item, path: str, message: str) -> None:
 
 
 def pytest_collection_modifyitems(items, config) -> None:
-    is_doctest = config.getoption("--doctest-modules") or config.getoption(
+    if is_doctest := config.getoption("--doctest-modules") or config.getoption(
         "--doctest-cython", default=False
-    )
+    ):
+        # Warnings from doctests that can be ignored; place reason in comment above.
+        # Each entry specifies (path, message) - see the ignore_doctest_warning function
+        ignored_doctest_warnings = [
+            ("is_int64_dtype", "is_int64_dtype is deprecated"),
+            ("is_interval_dtype", "is_interval_dtype is deprecated"),
+            ("is_period_dtype", "is_period_dtype is deprecated"),
+            ("is_datetime64tz_dtype", "is_datetime64tz_dtype is deprecated"),
+            ("is_categorical_dtype", "is_categorical_dtype is deprecated"),
+            ("is_sparse", "is_sparse is deprecated"),
+            ("DataFrameGroupBy.fillna", "DataFrameGroupBy.fillna is deprecated"),
+            ("NDFrame.replace", "The 'method' keyword"),
+            ("NDFrame.replace", "Series.replace without 'value'"),
+            ("NDFrame.clip", "Downcasting behavior in Series and DataFrame methods"),
+            ("Series.idxmin", "The behavior of Series.idxmin"),
+            ("Series.idxmax", "The behavior of Series.idxmax"),
+            ("SeriesGroupBy.fillna", "SeriesGroupBy.fillna is deprecated"),
+            ("SeriesGroupBy.idxmin", "The behavior of Series.idxmin"),
+            ("SeriesGroupBy.idxmax", "The behavior of Series.idxmax"),
+            # Docstring divides by zero to show behavior difference
+            ("missing.mask_zero_div_zero", "divide by zero encountered"),
+            (
+                "to_pydatetime",
+                "The behavior of DatetimeProperties.to_pydatetime is deprecated",
+            ),
+            (
+                "pandas.core.generic.NDFrame.bool",
+                "(Series|DataFrame).bool is now deprecated and will be removed "
+                "in future version of pandas",
+            ),
+            (
+                "pandas.core.generic.NDFrame.first",
+                "first is deprecated and will be removed in a future version. "
+                "Please create a mask and filter using `.loc` instead",
+            ),
+            (
+                "Resampler.fillna",
+                "DatetimeIndexResampler.fillna is deprecated",
+            ),
+            (
+                "DataFrameGroupBy.fillna",
+                "DataFrameGroupBy.fillna with 'method' is deprecated",
+            ),
+            (
+                "DataFrameGroupBy.fillna",
+                "DataFrame.fillna with 'method' is deprecated",
+            ),
+            ("read_parquet", "Passing a BlockManager to DataFrame is deprecated"),
+        ]
 
-    # Warnings from doctests that can be ignored; place reason in comment above.
-    # Each entry specifies (path, message) - see the ignore_doctest_warning function
-    ignored_doctest_warnings = [
-        ("is_int64_dtype", "is_int64_dtype is deprecated"),
-        ("is_interval_dtype", "is_interval_dtype is deprecated"),
-        ("is_period_dtype", "is_period_dtype is deprecated"),
-        ("is_datetime64tz_dtype", "is_datetime64tz_dtype is deprecated"),
-        ("is_categorical_dtype", "is_categorical_dtype is deprecated"),
-        ("is_sparse", "is_sparse is deprecated"),
-        ("DataFrameGroupBy.fillna", "DataFrameGroupBy.fillna is deprecated"),
-        ("NDFrame.replace", "The 'method' keyword"),
-        ("NDFrame.replace", "Series.replace without 'value'"),
-        ("NDFrame.clip", "Downcasting behavior in Series and DataFrame methods"),
-        ("Series.idxmin", "The behavior of Series.idxmin"),
-        ("Series.idxmax", "The behavior of Series.idxmax"),
-        ("SeriesGroupBy.fillna", "SeriesGroupBy.fillna is deprecated"),
-        ("SeriesGroupBy.idxmin", "The behavior of Series.idxmin"),
-        ("SeriesGroupBy.idxmax", "The behavior of Series.idxmax"),
-        # Docstring divides by zero to show behavior difference
-        ("missing.mask_zero_div_zero", "divide by zero encountered"),
-        (
-            "to_pydatetime",
-            "The behavior of DatetimeProperties.to_pydatetime is deprecated",
-        ),
-        (
-            "pandas.core.generic.NDFrame.bool",
-            "(Series|DataFrame).bool is now deprecated and will be removed "
-            "in future version of pandas",
-        ),
-        (
-            "pandas.core.generic.NDFrame.first",
-            "first is deprecated and will be removed in a future version. "
-            "Please create a mask and filter using `.loc` instead",
-        ),
-        (
-            "Resampler.fillna",
-            "DatetimeIndexResampler.fillna is deprecated",
-        ),
-        (
-            "DataFrameGroupBy.fillna",
-            "DataFrameGroupBy.fillna with 'method' is deprecated",
-        ),
-        (
-            "DataFrameGroupBy.fillna",
-            "DataFrame.fillna with 'method' is deprecated",
-        ),
-        ("read_parquet", "Passing a BlockManager to DataFrame is deprecated"),
-    ]
-
-    if is_doctest:
         for item in items:
             # autouse=True for the add_doctest_imports can lead to expensive teardowns
             # since doctest_namespace is a session fixture

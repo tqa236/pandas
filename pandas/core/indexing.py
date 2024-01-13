@@ -734,10 +734,7 @@ class _LocationIndexer(NDFrameIndexerBase):
         # we need to return a copy of ourselves
         new_self = type(self)(self.name, self.obj)
 
-        if axis is not None:
-            axis_int_none = self.obj._get_axis_number(axis)
-        else:
-            axis_int_none = axis
+        axis_int_none = self.obj._get_axis_number(axis) if axis is not None else axis
         new_self.axis = axis_int_none
         return new_self
 
@@ -947,12 +944,9 @@ class _LocationIndexer(NDFrameIndexerBase):
                 # It is unambiguous what axis this Ellipsis is indexing,
                 #  treat as a single null slice.
                 i = tup.index(Ellipsis)
-                # FIXME: this assumes only one Ellipsis
-                new_key = tup[:i] + (_NS,) + tup[i + 1 :]
-                return new_key
-
-            # TODO: other cases?  only one test gets here, and that is covered
-            #  by _validate_key_length
+                return tup[:i] + (_NS,) + tup[i + 1 :]
+                # TODO: other cases?  only one test gets here, and that is covered
+                #  by _validate_key_length
         return tup
 
     @final
@@ -1516,11 +1510,10 @@ class _LocIndexer(_LocationIndexer):
             if is_iterator(key):
                 key = list(key)
 
-            if com.is_bool_indexer(key):
-                key = check_bool_indexer(labels, key)
-                return key
-            else:
+            if not com.is_bool_indexer(key):
                 return self._get_listlike_indexer(key, axis)[1]
+            key = check_bool_indexer(labels, key)
+            return key
         else:
             try:
                 return labels.get_loc(key)
@@ -1660,10 +1653,7 @@ class _iLocIndexer(_LocationIndexer):
         # that provide the equivalent access of .at and .iat
         # a) avoid getting things via sections and (to minimize dtype changes)
         # b) provide a performant path
-        if len(key) != self.ndim:
-            return False
-
-        return all(is_integer(k) for k in key)
+        return False if len(key) != self.ndim else all(is_integer(k) for k in key)
 
     def _validate_integer(self, key: int | np.integer, axis: AxisInt) -> None:
         """
@@ -2128,9 +2118,11 @@ class _iLocIndexer(_LocationIndexer):
 
         is_full_setter = com.is_null_slice(pi) or com.is_full_slice(pi, len(self.obj))
 
-        is_null_setter = com.is_empty_slice(pi) or is_array_like(pi) and len(pi) == 0
-
-        if is_null_setter:
+        if (
+            is_null_setter := com.is_empty_slice(pi)
+            or is_array_like(pi)
+            and len(pi) == 0
+        ):
             # no-op, don't cast dtype later
             return
 
@@ -2308,11 +2300,7 @@ class _iLocIndexer(_LocationIndexer):
                 df = value.to_frame().T
 
                 idx = self.obj.index
-                if isinstance(idx, MultiIndex):
-                    name = idx.names
-                else:
-                    name = idx.name
-
+                name = idx.names if isinstance(idx, MultiIndex) else idx.name
                 df.index = Index([indexer], name=name)
                 if not has_dtype:
                     # i.e. if we already had a Series or ndarray, keep that
@@ -2329,16 +2317,15 @@ class _iLocIndexer(_LocationIndexer):
         """
         ilocs: Sequence[int | np.integer] | np.ndarray
         if is_integer(column_indexer):
-            ilocs = [column_indexer]
+            return [column_indexer]
         elif isinstance(column_indexer, slice):
-            ilocs = np.arange(len(self.obj.columns))[column_indexer]
+            return np.arange(len(self.obj.columns))[column_indexer]
         elif (
             isinstance(column_indexer, np.ndarray) and column_indexer.dtype.kind == "b"
         ):
-            ilocs = np.arange(len(column_indexer))[column_indexer]
+            return np.arange(len(column_indexer))[column_indexer]
         else:
-            ilocs = column_indexer
-        return ilocs
+            return column_indexer
 
     def _align_series(
         self,
@@ -2410,18 +2397,11 @@ class _iLocIndexer(_LocationIndexer):
                     if single_aligner and com.is_null_slice(idx):
                         continue
                     new_ix = ax[idx]
-                    if not is_list_like_indexer(new_ix):
-                        new_ix = Index([new_ix])
-                    else:
-                        new_ix = Index(new_ix)
+                    new_ix = Index([new_ix]) if not is_list_like_indexer(new_ix) else Index(new_ix)
                     if ser.index.equals(new_ix):
-                        if using_cow:
-                            return ser
-                        return ser._values.copy()
-
+                        return ser if using_cow else ser._values.copy()
                     return ser.reindex(new_ix)._values
 
-                # 2 dims
                 elif single_aligner:
                     # reindex along index
                     ax = self.obj.axes[1]
@@ -2470,32 +2450,28 @@ class _iLocIndexer(_LocationIndexer):
                     sindexers.append(i)
 
             if idx is not None and cols is not None:
-                if df.index.equals(idx) and df.columns.equals(cols):
-                    val = df.copy()
-                else:
-                    val = df.reindex(idx, columns=cols)
-                return val
-
+                return (
+                    df.copy()
+                    if df.index.equals(idx) and df.columns.equals(cols)
+                    else df.reindex(idx, columns=cols)
+                )
         elif (isinstance(indexer, slice) or is_list_like_indexer(indexer)) and is_frame:
             ax = self.obj.index[indexer]
             if df.index.equals(ax):
-                val = df.copy()
-            else:
-                # we have a multi-index and are trying to align
-                # with a particular, level GH3738
-                if (
-                    isinstance(ax, MultiIndex)
-                    and isinstance(df.index, MultiIndex)
-                    and ax.nlevels != df.index.nlevels
-                ):
-                    raise TypeError(
-                        "cannot align on a multi-index with out "
-                        "specifying the join levels"
-                    )
+                return df.copy()
+            # we have a multi-index and are trying to align
+            # with a particular, level GH3738
+            if (
+                isinstance(ax, MultiIndex)
+                and isinstance(df.index, MultiIndex)
+                and ax.nlevels != df.index.nlevels
+            ):
+                raise TypeError(
+                    "cannot align on a multi-index with out "
+                    "specifying the join levels"
+                )
 
-                val = df.reindex(index=ax)
-            return val
-
+            return df.reindex(index=ax)
         raise ValueError("Incompatible indexer with DataFrame")
 
 
@@ -2562,11 +2538,11 @@ class _AtIndexer(_ScalarAccessIndexer):
 
     def __getitem__(self, key):
         if self.ndim == 2 and not self._axes_are_unique:
-            # GH#33041 fall back to .loc
-            if not isinstance(key, tuple) or not all(is_scalar(x) for x in key):
-                raise ValueError("Invalid call for scalar access (getting)!")
-            return self.obj.loc[key]
+            if isinstance(key, tuple) and all(is_scalar(x) for x in key):
+                return self.obj.loc[key]
 
+            else:
+                raise ValueError("Invalid call for scalar access (getting)!")
         return super().__getitem__(key)
 
     def __setitem__(self, key, value) -> None:
@@ -2723,11 +2699,14 @@ def is_nested_tuple(tup, labels) -> bool:
     if not isinstance(tup, tuple):
         return False
 
-    for k in tup:
-        if is_list_like(k) or isinstance(k, slice):
-            return isinstance(labels, MultiIndex)
-
-    return False
+    return next(
+        (
+            isinstance(labels, MultiIndex)
+            for k in tup
+            if is_list_like(k) or isinstance(k, slice)
+        ),
+        False,
+    )
 
 
 def is_label_like(key) -> bool:

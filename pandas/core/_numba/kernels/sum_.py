@@ -71,10 +71,7 @@ def sliding_sum(
 ) -> tuple[np.ndarray, list[int]]:
     dtype = values.dtype
 
-    na_val: object = np.nan
-    if dtype.kind == "i":
-        na_val = 0
-
+    na_val = 0 if dtype.kind == "i" else np.nan
     N = len(start)
     nobs = 0
     sum_x = 0
@@ -138,10 +135,7 @@ def sliding_sum(
         if nobs == 0 == min_periods:
             result: object = 0
         elif nobs >= min_periods:
-            if num_consecutive_same_value >= nobs:
-                result = prev_value * nobs
-            else:
-                result = sum_x
+            result = prev_value * nobs if num_consecutive_same_value >= nobs else sum_x
         else:
             result = na_val
             if dtype.kind == "i":
@@ -232,10 +226,7 @@ def grouped_sum(
         prev_value = prev_vals[lab]
         sum_x = output[lab]
         if nobs >= min_periods:
-            if num_consecutive_same_value >= nobs:
-                result = prev_value * nobs
-            else:
-                result = sum_x
+            result = prev_value * nobs if num_consecutive_same_value >= nobs else sum_x
         else:
             result = sum_x  # Don't change val, will be replaced by nan later
             na_pos.append(lab)

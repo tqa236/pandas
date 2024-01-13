@@ -560,9 +560,7 @@ class Series(base.IndexOpsMixin, NDFrame):  # type: ignore[misc]
                 )
                 allow_mgr = True
 
-        elif isinstance(data, ExtensionArray):
-            pass
-        else:
+        elif not isinstance(data, ExtensionArray):
             data = com.maybe_iterable_to_list(data)
             if is_list_like(data) and not len(data) and dtype is None:
                 # GH 29405: Pre-2.0, this defaulted to float.
@@ -1120,11 +1118,7 @@ class Series(base.IndexOpsMixin, NDFrame):  # type: ignore[misc]
         if is_hashable(key) and not isinstance(key, slice):
             # Otherwise index.get_value will raise InvalidIndexError
             try:
-                # For labels that don't resolve as scalars like tuples and frozensets
-                result = self._get_value(key)
-
-                return result
-
+                return self._get_value(key)
             except (KeyError, TypeError, InvalidIndexError):
                 # InvalidIndexError for e.g. generator
                 #  see test_series_getitem_corner_generator
@@ -1166,21 +1160,18 @@ class Series(base.IndexOpsMixin, NDFrame):  # type: ignore[misc]
         # Note: The key_type == "boolean" case should be caught by the
         #  com.is_bool_indexer check in __getitem__
         if key_type == "integer":
-            # We need to decide whether to treat this as a positional indexer
-            #  (i.e. self.iloc) or label-based (i.e. self.loc)
             if not self.index._should_fallback_to_positional:
                 return self.loc[key]
-            else:
-                warnings.warn(
-                    # GH#50617
-                    "Series.__getitem__ treating keys as positions is deprecated. "
-                    "In a future version, integer keys will always be treated "
-                    "as labels (consistent with DataFrame behavior). To access "
-                    "a value by position, use `ser.iloc[pos]`",
-                    FutureWarning,
-                    stacklevel=find_stack_level(),
-                )
-                return self.iloc[key]
+            warnings.warn(
+                # GH#50617
+                "Series.__getitem__ treating keys as positions is deprecated. "
+                "In a future version, integer keys will always be treated "
+                "as labels (consistent with DataFrame behavior). To access "
+                "a value by position, use `ser.iloc[pos]`",
+                FutureWarning,
+                stacklevel=find_stack_level(),
+            )
+            return self.iloc[key]
 
         # handle the dup indexing case GH#4246
         return self.loc[key]
@@ -1231,24 +1222,22 @@ class Series(base.IndexOpsMixin, NDFrame):  # type: ignore[misc]
         if is_integer(loc):
             return self._values[loc]
 
-        if isinstance(self.index, MultiIndex):
-            mi = self.index
-            new_values = self._values[loc]
-            if len(new_values) == 1 and mi.nlevels == 1:
-                # If more than one level left, we can not return a scalar
-                return new_values[0]
-
-            new_index = mi[loc]
-            new_index = maybe_droplevels(new_index, label)
-            new_ser = self._constructor(
-                new_values, index=new_index, name=self.name, copy=False
-            )
-            if isinstance(loc, slice):
-                new_ser._mgr.add_references(self._mgr)  # type: ignore[arg-type]
-            return new_ser.__finalize__(self)
-
-        else:
+        if not isinstance(self.index, MultiIndex):
             return self.iloc[loc]
+        mi = self.index
+        new_values = self._values[loc]
+        if len(new_values) == 1 and mi.nlevels == 1:
+            # If more than one level left, we can not return a scalar
+            return new_values[0]
+
+        new_index = mi[loc]
+        new_index = maybe_droplevels(new_index, label)
+        new_ser = self._constructor(
+            new_values, index=new_index, name=self.name, copy=False
+        )
+        if isinstance(loc, slice):
+            new_ser._mgr.add_references(self._mgr)  # type: ignore[arg-type]
+        return new_ser.__finalize__(self)
 
     def __setitem__(self, key, value) -> None:
         warn = True
@@ -1727,10 +1716,7 @@ class Series(base.IndexOpsMixin, NDFrame):  # type: ignore[misc]
             new_index = default_index(len(self))
             if level is not None:
                 level_list: Sequence[Hashable]
-                if not isinstance(level, (tuple, list)):
-                    level_list = [level]
-                else:
-                    level_list = level
+                level_list = [level] if not isinstance(level, (tuple, list)) else level
                 level_list = [self.index._get_level_number(lev) for lev in level_list]
                 if len(level_list) < self.index.nlevels:
                     new_index = self.index.droplevel(level_list)
@@ -1753,11 +1739,7 @@ class Series(base.IndexOpsMixin, NDFrame):  # type: ignore[misc]
             if name is lib.no_default:
                 # For backwards compatibility, keep columns as [0] instead of
                 #  [None] when self.name is None
-                if self.name is None:
-                    name = 0
-                else:
-                    name = self.name
-
+                name = 0 if self.name is None else self.name
             df = self.to_frame(name)
             return df.reset_index(
                 level=level, drop=drop, allow_duplicates=allow_duplicates
@@ -1883,12 +1865,11 @@ class Series(base.IndexOpsMixin, NDFrame):  # type: ignore[misc]
 
         if buf is None:
             return result
+        if hasattr(buf, "write"):
+            buf.write(result)
         else:
-            if hasattr(buf, "write"):
-                buf.write(result)
-            else:
-                with open(buf, "w", encoding="utf-8") as f:
-                    f.write(result)
+            with open(buf, "w", encoding="utf-8") as f:
+                f.write(result)
         return None
 
     @doc(
@@ -2099,11 +2080,7 @@ class Series(base.IndexOpsMixin, NDFrame):  # type: ignore[misc]
         columns: Index
         if name is lib.no_default:
             name = self.name
-            if name is None:
-                # default to [0], same as we would get with DataFrame(self)
-                columns = default_index(1)
-            else:
-                columns = Index([name])
+            columns = default_index(1) if name is None else Index([name])
         else:
             columns = Index([name])
 
@@ -2510,11 +2487,10 @@ class Series(base.IndexOpsMixin, NDFrame):  # type: ignore[misc]
         if ignore_index:
             result.index = default_index(len(result))
 
-        if inplace:
-            self._update_inplace(result)
-            return None
-        else:
+        if not inplace:
             return result
+        self._update_inplace(result)
+        return None
 
     def duplicated(self, keep: DropKeep = "first") -> Series:
         """
@@ -3232,9 +3208,7 @@ class Series(base.IndexOpsMixin, NDFrame):  # type: ignore[misc]
             return self._constructor(
                 np.dot(lvals, rvals), index=other.columns, copy=False
             ).__finalize__(self, method="dot")
-        elif isinstance(other, Series):
-            return np.dot(lvals, rvals)
-        elif isinstance(rvals, np.ndarray):
+        elif isinstance(other, Series) or isinstance(rvals, np.ndarray):
             return np.dot(lvals, rvals)
         else:  # pragma: no cover
             raise TypeError(f"unsupported type: {type(other)}")
@@ -3856,10 +3830,7 @@ class Series(base.IndexOpsMixin, NDFrame):  # type: ignore[misc]
         sorted_index = nargsort(values_to_sort, kind, bool(ascending), na_position)
 
         if is_range_indexer(sorted_index, len(sorted_index)):
-            if inplace:
-                return self._update_inplace(self)
-            return self.copy(deep=None)
-
+            return self._update_inplace(self) if inplace else self.copy(deep=None)
         result = self._constructor(
             self._values[sorted_index], index=self.index[sorted_index], copy=False
         )
@@ -4744,11 +4715,10 @@ class Series(base.IndexOpsMixin, NDFrame):  # type: ignore[misc]
 
         # if func is None, will switch to user-provided "named aggregation" kwargs
         if func is None:
-            func = dict(kwargs.items())
+            func = dict(kwargs)
 
         op = SeriesApply(self, func, args=args, kwargs=kwargs)
-        result = op.agg()
-        return result
+        return op.agg()
 
     agg = aggregate
 
@@ -4767,8 +4737,7 @@ class Series(base.IndexOpsMixin, NDFrame):  # type: ignore[misc]
             if using_copy_on_write() or warn_copy_on_write()
             else self
         )
-        result = SeriesApply(ser, func=func, args=args, kwargs=kwargs).transform()
-        return result
+        return SeriesApply(ser, func=func, args=args, kwargs=kwargs).transform()
 
     def apply(
         self,
@@ -4920,10 +4889,7 @@ class Series(base.IndexOpsMixin, NDFrame):  # type: ignore[misc]
         ):
             if using_copy_on_write():
                 return self.copy(deep=copy)
-            if copy or copy is None:
-                return self.copy(deep=copy)
-            return self
-
+            return self.copy(deep=copy) if copy or copy is None else self
         new_values = algorithms.take_nd(
             self._values, indexer, allow_fill=True, fill_value=None
         )
@@ -5883,18 +5849,11 @@ class Series(base.IndexOpsMixin, NDFrame):  # type: ignore[misc]
         if self._can_hold_na:
             result = remove_na_arraylike(self)
         else:
-            if not inplace:
-                result = self.copy(deep=None)
-            else:
-                result = self
-
+            result = self.copy(deep=None) if not inplace else self
         if ignore_index:
             result.index = default_index(len(result))
 
-        if inplace:
-            return self._update_inplace(result)
-        else:
-            return result
+        return self._update_inplace(result) if inplace else result
 
     # ----------------------------------------------------------------------
     # Time series-oriented methods
@@ -6426,19 +6385,15 @@ class Series(base.IndexOpsMixin, NDFrame):  # type: ignore[misc]
             # dispatch to ExtensionArray interface
             return delegate._reduce(name, skipna=skipna, **kwds)
 
-        else:
             # dispatch to numpy arrays
-            if numeric_only and self.dtype.kind not in "iufcb":
-                # i.e. not is_numeric_dtype(self.dtype)
-                kwd_name = "numeric_only"
-                if name in ["any", "all"]:
-                    kwd_name = "bool_only"
-                # GH#47500 - change to TypeError to match other methods
-                raise TypeError(
-                    f"Series.{name} does not allow {kwd_name}={numeric_only} "
-                    "with non-numeric dtypes."
-                )
-            return op(delegate, skipna=skipna, **kwds)
+        if numeric_only and self.dtype.kind not in "iufcb":
+            kwd_name = "bool_only" if name in {"any", "all"} else "numeric_only"
+            # GH#47500 - change to TypeError to match other methods
+            raise TypeError(
+                f"Series.{name} does not allow {kwd_name}={numeric_only} "
+                "with non-numeric dtypes."
+            )
+        return op(delegate, skipna=skipna, **kwds)
 
     @Appender(make_doc("any", ndim=1))
     # error: Signature of "any" incompatible with supertype "NDFrame"

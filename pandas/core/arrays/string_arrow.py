@@ -260,9 +260,7 @@ class ArrowStringArray(ObjectStringArrayMixin, ArrowExtensionArray, BaseStringAr
         dtype = pandas_dtype(dtype)
 
         if dtype == self.dtype:
-            if copy:
-                return self.copy()
-            return self
+            return self.copy() if copy else self
         elif isinstance(dtype, NumericDtype):
             data = self._pa_array.cast(pa.from_numpy_dtype(dtype.numpy_dtype))
             return dtype.__from_arrow__(data)
@@ -310,11 +308,7 @@ class ArrowStringArray(ObjectStringArrayMixin, ArrowExtensionArray, BaseStringAr
 
         if is_integer_dtype(dtype) or is_bool_dtype(dtype):
             constructor: type[IntegerArray | BooleanArray]
-            if is_integer_dtype(dtype):
-                constructor = IntegerArray
-            else:
-                constructor = BooleanArray
-
+            constructor = IntegerArray if is_integer_dtype(dtype) else BooleanArray
             na_value_is_na = isna(na_value)
             if na_value_is_na:
                 na_value = 1
@@ -368,18 +362,17 @@ class ArrowStringArray(ObjectStringArrayMixin, ArrowExtensionArray, BaseStringAr
     def _str_startswith(self, pat: str | tuple[str, ...], na: Scalar | None = None):
         if isinstance(pat, str):
             result = pc.starts_with(self._pa_array, pattern=pat)
+        elif len(pat) == 0:
+            # mimic existing behaviour of string extension array
+            # and python string method
+            result = pa.array(
+                np.zeros(len(self._pa_array), dtype=bool), mask=isna(self._pa_array)
+            )
         else:
-            if len(pat) == 0:
-                # mimic existing behaviour of string extension array
-                # and python string method
-                result = pa.array(
-                    np.zeros(len(self._pa_array), dtype=bool), mask=isna(self._pa_array)
-                )
-            else:
-                result = pc.starts_with(self._pa_array, pattern=pat[0])
+            result = pc.starts_with(self._pa_array, pattern=pat[0])
 
-                for p in pat[1:]:
-                    result = pc.or_(result, pc.starts_with(self._pa_array, pattern=p))
+            for p in pat[1:]:
+                result = pc.or_(result, pc.starts_with(self._pa_array, pattern=p))
         if not isna(na):
             result = result.fill_null(na)
         return self._result_converter(result)
@@ -387,18 +380,17 @@ class ArrowStringArray(ObjectStringArrayMixin, ArrowExtensionArray, BaseStringAr
     def _str_endswith(self, pat: str | tuple[str, ...], na: Scalar | None = None):
         if isinstance(pat, str):
             result = pc.ends_with(self._pa_array, pattern=pat)
+        elif len(pat) == 0:
+            # mimic existing behaviour of string extension array
+            # and python string method
+            result = pa.array(
+                np.zeros(len(self._pa_array), dtype=bool), mask=isna(self._pa_array)
+            )
         else:
-            if len(pat) == 0:
-                # mimic existing behaviour of string extension array
-                # and python string method
-                result = pa.array(
-                    np.zeros(len(self._pa_array), dtype=bool), mask=isna(self._pa_array)
-                )
-            else:
-                result = pc.ends_with(self._pa_array, pattern=pat[0])
+            result = pc.ends_with(self._pa_array, pattern=pat[0])
 
-                for p in pat[1:]:
-                    result = pc.or_(result, pc.ends_with(self._pa_array, pattern=p))
+            for p in pat[1:]:
+                result = pc.or_(result, pc.ends_with(self._pa_array, pattern=p))
         if not isna(na):
             result = result.fill_null(na)
         return self._result_converter(result)
@@ -568,7 +560,7 @@ class ArrowStringArray(ObjectStringArrayMixin, ArrowExtensionArray, BaseStringAr
         self, name: str, *, skipna: bool = True, keepdims: bool = False, **kwargs
     ):
         result = self._reduce_calc(name, skipna=skipna, keepdims=keepdims, **kwargs)
-        if name in ("argmin", "argmax") and isinstance(result, pa.Array):
+        if name in {"argmin", "argmax"} and isinstance(result, pa.Array):
             return self._convert_int_dtype(result)
         elif isinstance(result, pa.Array):
             return type(self)(result)
@@ -629,12 +621,9 @@ class ArrowStringArrayNumpySemantics(ArrowStringArray):
         arr = np.asarray(self)
 
         if is_integer_dtype(dtype) or is_bool_dtype(dtype):
-            if is_integer_dtype(dtype):
-                na_value = np.nan
-            else:
-                na_value = False
+            na_value = np.nan if is_integer_dtype(dtype) else False
             try:
-                result = lib.map_infer_mask(
+                return lib.map_infer_mask(
                     arr,
                     f,
                     mask.view("uint8"),
@@ -642,8 +631,6 @@ class ArrowStringArrayNumpySemantics(ArrowStringArray):
                     na_value=na_value,
                     dtype=np.dtype(dtype),  # type: ignore[arg-type]
                 )
-                return result
-
             except ValueError:
                 result = lib.map_infer_mask(
                     arr,
@@ -700,17 +687,16 @@ class ArrowStringArrayNumpySemantics(ArrowStringArray):
     def _reduce(
         self, name: str, *, skipna: bool = True, keepdims: bool = False, **kwargs
     ):
-        if name in ["any", "all"]:
-            if not skipna and name == "all":
-                nas = pc.invert(pc.is_null(self._pa_array))
-                arr = pc.and_kleene(nas, pc.not_equal(self._pa_array, ""))
-            else:
-                arr = pc.not_equal(self._pa_array, "")
-            return ArrowExtensionArray(arr)._reduce(
-                name, skipna=skipna, keepdims=keepdims, **kwargs
-            )
-        else:
+        if name not in {"any", "all"}:
             return super()._reduce(name, skipna=skipna, keepdims=keepdims, **kwargs)
+        if not skipna and name == "all":
+            nas = pc.invert(pc.is_null(self._pa_array))
+            arr = pc.and_kleene(nas, pc.not_equal(self._pa_array, ""))
+        else:
+            arr = pc.not_equal(self._pa_array, "")
+        return ArrowExtensionArray(arr)._reduce(
+            name, skipna=skipna, keepdims=keepdims, **kwargs
+        )
 
     def insert(self, loc: int, item) -> ArrowStringArrayNumpySemantics:
         if item is np.nan:

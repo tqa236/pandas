@@ -207,7 +207,7 @@ def raises_chained_assignment_error(warn=True, extra_warnings=(), extra_match=()
         from contextlib import nullcontext
 
         return nullcontext()
-    elif PYPY and extra_warnings:
+    elif PYPY:
         return assert_produces_warning(
             extra_warnings,
             match="|".join(extra_match),

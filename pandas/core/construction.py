@@ -311,11 +311,7 @@ def array(
         dtype = pandas_dtype(dtype)
 
     if isinstance(data, ExtensionArray) and (dtype is None or data.dtype == dtype):
-        # e.g. TimedeltaArray[s], avoid casting to NumpyExtensionArray
-        if copy:
-            return data.copy()
-        return data
-
+        return data.copy() if copy else data
     if isinstance(dtype, ExtensionDtype):
         cls = dtype.construct_array_type()
         return cls._from_sequence(data, dtype=dtype, copy=copy)
@@ -460,13 +456,8 @@ def extract_array(
     """
     typ = getattr(obj, "_typ", None)
     if typ in _typs:
-        # i.e. isinstance(obj, (ABCIndex, ABCSeries))
         if typ == "rangeindex":
-            if extract_range:
-                # error: "T" has no attribute "_values"
-                return obj._values  # type: ignore[attr-defined]
-            return obj
-
+            return obj._values if extract_range else obj
         # error: "T" has no attribute "_values"
         return obj._values  # type: ignore[attr-defined]
 
@@ -547,10 +538,9 @@ def sanitize_array(
         # Avoid ending up with a NumpyExtensionArray
         dtype = dtype.numpy_dtype
 
-    object_index = False
-    if isinstance(data, ABCIndex) and data.dtype == object and dtype is None:
-        object_index = True
-
+    object_index = (
+        isinstance(data, ABCIndex) and data.dtype == object and dtype is None
+    )
     # extract ndarray or ExtensionArray, ensure we have no NumpyExtensionArray
     data = extract_array(data, extract_numpy=True, extract_range=True)
 
@@ -595,7 +585,6 @@ def sanitize_array(
         cls = dtype.construct_array_type()
         subarr = cls._from_sequence(data, dtype=dtype, copy=copy)
 
-    # GH#846
     elif isinstance(data, np.ndarray):
         if isinstance(data, np.matrix):
             data = data.A
@@ -640,7 +629,7 @@ def sanitize_array(
         # materialize e.g. generators, convert e.g. tuples, abc.ValueView
         data = list(data)
 
-        if len(data) == 0 and dtype is None:
+        if not data and dtype is None:
             # We default to float64, matching numpy
             subarr = np.array([], dtype=np.float64)
 
@@ -784,8 +773,7 @@ def _try_cast(
 
     if dtype == object:
         if not is_ndarray:
-            subarr = construct_1d_object_array_from_listlike(arr)
-            return subarr
+            return construct_1d_object_array_from_listlike(arr)
         return ensure_wrapped_if_datetimelike(arr).astype(dtype, copy=copy)
 
     elif dtype.kind == "U":
@@ -804,8 +792,6 @@ def _try_cast(
     elif dtype.kind in "mM":
         return maybe_cast_to_datetime(arr, dtype)
 
-    # GH#15832: Check if we are requesting a numeric dtype and
-    # that we can convert the data to the requested dtype.
     elif dtype.kind in "iu":
         # this will raise if we have e.g. floats
 

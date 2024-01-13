@@ -311,8 +311,7 @@ class ArrowExtensionArray(
         """
         pa_type = to_pyarrow_type(dtype)
         pa_array = cls._box_pa_array(scalars, pa_type=pa_type, copy=copy)
-        arr = cls(pa_array)
-        return arr
+        return cls(pa_array)
 
     @classmethod
     def _from_sequence_of_strings(
@@ -622,19 +621,18 @@ class ArrowExtensionArray(
         value = self._pa_array[item]
         if isinstance(value, pa.ChunkedArray):
             return type(self)(value)
+        pa_type = self._pa_array.type
+        scalar = value.as_py()
+        if scalar is None:
+            return self._dtype.na_value
+        elif pa.types.is_timestamp(pa_type) and pa_type.unit != "ns":
+            # GH 53326
+            return Timestamp(scalar).as_unit(pa_type.unit)
+        elif pa.types.is_duration(pa_type) and pa_type.unit != "ns":
+            # GH 53326
+            return Timedelta(scalar).as_unit(pa_type.unit)
         else:
-            pa_type = self._pa_array.type
-            scalar = value.as_py()
-            if scalar is None:
-                return self._dtype.na_value
-            elif pa.types.is_timestamp(pa_type) and pa_type.unit != "ns":
-                # GH 53326
-                return Timestamp(scalar).as_unit(pa_type.unit)
-            elif pa.types.is_duration(pa_type) and pa_type.unit != "ns":
-                # GH 53326
-                return Timedelta(scalar).as_unit(pa_type.unit)
-            else:
-                return scalar
+            return scalar
 
     def __iter__(self) -> Iterator[Any]:
         """
@@ -693,10 +691,7 @@ class ArrowExtensionArray(
         return state
 
     def __setstate__(self, state) -> None:
-        if "_data" in state:
-            data = state.pop("_data")
-        else:
-            data = state["_pa_array"]
+        data = state.pop("_data") if "_data" in state else state["_pa_array"]
         state["_pa_array"] = pa.chunked_array(data)
         self.__dict__.update(state)
 
@@ -1309,22 +1304,20 @@ class ArrowExtensionArray(
 
         if allow_fill:
             fill_mask = indices_array < 0
-            if fill_mask.any():
-                validate_indices(indices_array, len(self._pa_array))
-                # TODO(ARROW-9433): Treat negative indices as NULL
-                indices_array = pa.array(indices_array, mask=fill_mask)
-                result = self._pa_array.take(indices_array)
-                if isna(fill_value):
-                    return type(self)(result)
-                # TODO: ArrowNotImplementedError: Function fill_null has no
-                # kernel matching input types (array[string], scalar[string])
-                result = type(self)(result)
-                result[fill_mask] = fill_value
-                return result
-                # return type(self)(pc.fill_null(result, pa.scalar(fill_value)))
-            else:
+            if not fill_mask.any():
                 # Nothing to fill
                 return type(self)(self._pa_array.take(indices))
+            validate_indices(indices_array, len(self._pa_array))
+            # TODO(ARROW-9433): Treat negative indices as NULL
+            indices_array = pa.array(indices_array, mask=fill_mask)
+            result = self._pa_array.take(indices_array)
+            if isna(fill_value):
+                return type(self)(result)
+            # TODO: ArrowNotImplementedError: Function fill_null has no
+            # kernel matching input types (array[string], scalar[string])
+            result = type(self)(result)
+            result[fill_mask] = fill_value
+            return result
         else:  # allow_fill=False
             # TODO(ARROW-9432): Treat negative indices as indices from the right.
             if (indices_array < 0).any():
@@ -1417,10 +1410,7 @@ class ArrowExtensionArray(
         else:
             if dtype is None:
                 empty = pa.array([], type=pa_type).to_numpy(zero_copy_only=False)
-                if can_hold_element(empty, na_value):
-                    dtype = empty.dtype
-                else:
-                    dtype = np.object_
+                dtype = empty.dtype if can_hold_element(empty, na_value) else np.object_
             result = np.empty(len(data), dtype=dtype)
             mask = data.isna()
             result[mask] = na_value
@@ -1443,10 +1433,7 @@ class ArrowExtensionArray(
         elif pa.types.is_boolean(pa_type):
             values = self.to_numpy(na_value=False)
         elif pa.types.is_temporal(pa_type):
-            if pa_type.bit_width == 32:
-                pa_type = pa.int32()
-            else:
-                pa_type = pa.int64()
+            pa_type = pa.int32() if pa_type.bit_width == 32 else pa.int64()
             arr = self.astype(ArrowDtype(pa_type))
             values = arr.to_numpy(na_value=0)
         else:
@@ -1594,8 +1581,10 @@ class ArrowExtensionArray(
         pa_dtype = data_to_accum.type
 
         convert_to_int = (
-            pa.types.is_temporal(pa_dtype) and name in ["cummax", "cummin"]
-        ) or (pa.types.is_duration(pa_dtype) and name == "cumsum")
+            pa.types.is_temporal(pa_dtype)
+            and name in {"cummax", "cummin"}
+            or (pa.types.is_duration(pa_dtype) and name == "cumsum")
+        )
 
         if convert_to_int:
             if pa_dtype.bit_width == 32:
@@ -1640,7 +1629,7 @@ class ArrowExtensionArray(
 
         cast_kwargs = {} if pa_version_under13p0 else {"safe": False}
 
-        if name in ["any", "all"] and (
+        if name in {"any", "all"} and (
             pa.types.is_integer(pa_type)
             or pa.types.is_floating(pa_type)
             or pa.types.is_duration(pa_type)
@@ -1657,10 +1646,12 @@ class ArrowExtensionArray(
             not_eq = pc.not_equal(data_to_cmp, 0)
             data_to_reduce = not_eq
 
-        elif name in ["min", "max", "sum"] and pa.types.is_duration(pa_type):
+        elif name in {"min", "max", "sum"} and pa.types.is_duration(pa_type):
             data_to_reduce = self._pa_array.cast(pa.int64())
 
-        elif name in ["median", "mean", "std", "sem"] and pa.types.is_temporal(pa_type):
+        elif name in {"median", "mean", "std", "sem"} and pa.types.is_temporal(
+            pa_type
+        ):
             nbits = pa_type.bit_width
             if nbits == 32:
                 data_to_reduce = self._pa_array.cast(pa.int32())
@@ -1690,7 +1681,7 @@ class ArrowExtensionArray(
                 return super()._reduce(name, skipna=skipna, **kwargs)
 
         # GH51624: pyarrow defaults to min_count=1, pandas behavior is min_count=0
-        if name in ["any", "all"] and "min_count" not in kwargs:
+        if name in {"any", "all"} and "min_count" not in kwargs:
             kwargs["min_count"] = 0
         elif name == "median":
             # GH 52679: Use quantile instead of approximate_median
@@ -1712,9 +1703,9 @@ class ArrowExtensionArray(
         if pc.is_null(result).as_py():
             return result
 
-        if name in ["min", "max", "sum"] and pa.types.is_duration(pa_type):
+        if name in {"min", "max", "sum"} and pa.types.is_duration(pa_type):
             result = result.cast(pa_type)
-        if name in ["median", "mean"] and pa.types.is_temporal(pa_type):
+        if name in {"median", "mean"} and pa.types.is_temporal(pa_type):
             if not pa_version_under13p0:
                 nbits = pa_type.bit_width
                 if nbits == 32:
@@ -1722,7 +1713,7 @@ class ArrowExtensionArray(
                 else:
                     result = result.cast(pa.int64(), **cast_kwargs)
             result = result.cast(pa_type)
-        if name in ["std", "sem"] and pa.types.is_temporal(pa_type):
+        if name in {"std", "sem"} and pa.types.is_temporal(pa_type):
             result = result.cast(pa.int64(), **cast_kwargs)
             if pa.types.is_duration(pa_type):
                 result = result.cast(pa_type)
@@ -1765,10 +1756,7 @@ class ArrowExtensionArray(
         TypeError : subclass does not define reductions
         """
         result = self._reduce_calc(name, skipna=skipna, keepdims=keepdims, **kwargs)
-        if isinstance(result, pa.Array):
-            return type(self)(result)
-        else:
-            return result
+        return type(self)(result) if isinstance(result, pa.Array) else result
 
     def _reduce_calc(
         self, name: str, *, skipna: bool = True, keepdims: bool = False, **kwargs
@@ -1776,15 +1764,14 @@ class ArrowExtensionArray(
         pa_result = self._reduce_pyarrow(name, skipna=skipna, **kwargs)
 
         if keepdims:
-            if isinstance(pa_result, pa.Scalar):
-                result = pa.array([pa_result.as_py()], type=pa_result.type)
-            else:
-                result = pa.array(
+            return (
+                pa.array([pa_result.as_py()], type=pa_result.type)
+                if isinstance(pa_result, pa.Scalar)
+                else pa.array(
                     [pa_result],
                     type=to_pyarrow_type(infer_dtype_from_scalar(pa_result)[0]),
                 )
-            return result
-
+            )
         if pc.is_null(pa_result).as_py():
             return self.dtype.na_value
         elif isinstance(pa_result, pa.Scalar):
@@ -1911,13 +1898,8 @@ class ArrowExtensionArray(
                 pct=pct,
             )
             # keep dtypes consistent with the implementation below
-            if method == "average" or pct:
-                pa_type = pa.float64()
-            else:
-                pa_type = pa.uint64()
-            result = pa.array(ranked, type=pa_type, from_pandas=True)
-            return result
-
+            pa_type = pa.float64() if method == "average" or pct else pa.uint64()
+            return pa.array(ranked, type=pa_type, from_pandas=True)
         data = self._pa_array.combine_chunks()
         sort_keys = "ascending" if ascending else "descending"
         null_placement = "at_start" if na_option == "top" else "at_end"
@@ -1949,10 +1931,7 @@ class ArrowExtensionArray(
         if pct:
             if not pa.types.is_floating(result.type):
                 result = result.cast(pa.float64())
-            if method == "dense":
-                divisor = pc.max(result)
-            else:
-                divisor = pc.count(result)
+            divisor = pc.max(result) if method == "dense" else pc.count(result)
             result = pc.divide(result, divisor)
 
         return result
@@ -1999,21 +1978,14 @@ class ArrowExtensionArray(
             # https://github.com/apache/arrow/issues/33769 in these cases
             #  we can cast to ints and back
             nbits = pa_dtype.bit_width
-            if nbits == 32:
-                data = data.cast(pa.int32())
-            else:
-                data = data.cast(pa.int64())
-
+            data = data.cast(pa.int32()) if nbits == 32 else data.cast(pa.int64())
         result = pc.quantile(data, q=qs, interpolation=interpolation)
 
         if pa.types.is_temporal(pa_dtype):
             if pa.types.is_floating(result.type):
                 result = pc.floor(result)
             nbits = pa_dtype.bit_width
-            if nbits == 32:
-                result = result.cast(pa.int32())
-            else:
-                result = result.cast(pa.int64())
+            result = result.cast(pa.int32()) if nbits == 32 else result.cast(pa.int64())
             result = result.cast(pa_dtype)
 
         return type(self)(result)
@@ -2276,10 +2248,7 @@ class ArrowExtensionArray(
         if flags:
             raise NotImplementedError(f"contains not implemented with {flags=}")
 
-        if regex:
-            pa_contains = pc.match_substring_regex
-        else:
-            pa_contains = pc.match_substring
+        pa_contains = pc.match_substring_regex if regex else pc.match_substring
         result = pa_contains(self._pa_array, pat, ignore_case=not case)
         if not isna(na):
             result = result.fill_null(na)
@@ -2288,16 +2257,15 @@ class ArrowExtensionArray(
     def _str_startswith(self, pat: str | tuple[str, ...], na=None) -> Self:
         if isinstance(pat, str):
             result = pc.starts_with(self._pa_array, pattern=pat)
+        elif len(pat) == 0:
+            # For empty tuple, pd.StringDtype() returns null for missing values
+            # and false for valid values.
+            result = pc.if_else(pc.is_null(self._pa_array), None, False)
         else:
-            if len(pat) == 0:
-                # For empty tuple, pd.StringDtype() returns null for missing values
-                # and false for valid values.
-                result = pc.if_else(pc.is_null(self._pa_array), None, False)
-            else:
-                result = pc.starts_with(self._pa_array, pattern=pat[0])
+            result = pc.starts_with(self._pa_array, pattern=pat[0])
 
-                for p in pat[1:]:
-                    result = pc.or_(result, pc.starts_with(self._pa_array, pattern=p))
+            for p in pat[1:]:
+                result = pc.or_(result, pc.starts_with(self._pa_array, pattern=p))
         if not isna(na):
             result = result.fill_null(na)
         return type(self)(result)
@@ -2305,16 +2273,15 @@ class ArrowExtensionArray(
     def _str_endswith(self, pat: str | tuple[str, ...], na=None) -> Self:
         if isinstance(pat, str):
             result = pc.ends_with(self._pa_array, pattern=pat)
+        elif len(pat) == 0:
+            # For empty tuple, pd.StringDtype() returns null for missing values
+            # and false for valid values.
+            result = pc.if_else(pc.is_null(self._pa_array), None, False)
         else:
-            if len(pat) == 0:
-                # For empty tuple, pd.StringDtype() returns null for missing values
-                # and false for valid values.
-                result = pc.if_else(pc.is_null(self._pa_array), None, False)
-            else:
-                result = pc.ends_with(self._pa_array, pattern=pat[0])
+            result = pc.ends_with(self._pa_array, pattern=pat[0])
 
-                for p in pat[1:]:
-                    result = pc.or_(result, pc.ends_with(self._pa_array, pattern=p))
+            for p in pat[1:]:
+                result = pc.or_(result, pc.ends_with(self._pa_array, pattern=p))
         if not isna(na):
             result = result.fill_null(na)
         return type(self)(result)

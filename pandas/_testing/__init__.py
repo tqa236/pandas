@@ -487,9 +487,7 @@ def get_finest_unit(left: str, right: str):
     """
     Find the higher of two datetime64 units.
     """
-    if _UNITS.index(left) >= _UNITS.index(right):
-        return left
-    return right
+    return left if _UNITS.index(left) >= _UNITS.index(right) else right
 
 
 def shares_memory(left, right) -> bool:

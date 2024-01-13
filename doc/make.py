@@ -64,7 +64,7 @@ class DocBuilder:
 
         self.single_doc_html = None
         if single_doc and single_doc.endswith(".rst"):
-            self.single_doc_html = os.path.splitext(single_doc)[0] + ".html"
+            self.single_doc_html = f"{os.path.splitext(single_doc)[0]}.html"
         elif single_doc:
             self.single_doc_html = f"reference/api/pandas.{single_doc}.html"
 
@@ -236,14 +236,13 @@ class DocBuilder:
             os.remove(zip_fname)
 
         if ret_code == 0:
-            if self.single_doc_html is not None:
-                if not self.no_browser:
-                    self._open_browser(self.single_doc_html)
-            else:
+            if self.single_doc_html is None:
                 self._add_redirects()
                 if self.whatsnew and not self.no_browser:
                     self._open_browser(os.path.join("whatsnew", "index.html"))
 
+            elif not self.no_browser:
+                self._open_browser(self.single_doc_html)
         return ret_code
 
     def latex(self, force=False):
@@ -256,7 +255,7 @@ class DocBuilder:
             ret_code = self._sphinx_build("latex")
             os.chdir(os.path.join(BUILD_PATH, "latex"))
             if force:
-                for i in range(3):
+                for _ in range(3):
                     self._run_os("pdflatex", "-interaction=nonstopmode", "pandas.tex")
                 raise SystemExit(
                     "You should check the file "

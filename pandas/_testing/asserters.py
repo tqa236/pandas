@@ -129,10 +129,7 @@ def assert_almost_equal(
             if is_number(left) and is_number(right):
                 # Do not compare numeric classes, like np.float64 and float.
                 pass
-            elif is_bool(left) and is_bool(right):
-                # Do not compare bool classes, like np.bool_ and bool.
-                pass
-            else:
+            elif not is_bool(left) or not is_bool(right):
                 if isinstance(left, np.ndarray) or isinstance(right, np.ndarray):
                     obj = "numpy array"
                 else:
@@ -358,11 +355,7 @@ def assert_class_equal(
     __tracebackhide__ = True
 
     def repr_class(x):
-        if isinstance(x, Index):
-            # return Index as it is to include values in the error message
-            return x
-
-        return type(x).__name__
+        return x if isinstance(x, Index) else type(x).__name__
 
     def is_class_equiv(idx: Index) -> bool:
         """Classes that are a RangeIndex (sub-)instance or exactly an `Index` .

@@ -294,8 +294,7 @@ class NDArrayBackedExtensionArray(NDArrayBacked, ExtensionArray):
         if lib.is_scalar(result):
             return self._box_func(result)
 
-        result = self._from_backing_data(result)
-        return result
+        return self._from_backing_data(result)
 
     def _fill_mask_inplace(
         self, method: str, limit: int | None, mask: npt.NDArray[np.bool_]
@@ -323,17 +322,9 @@ class NDArrayBackedExtensionArray(NDArrayBacked, ExtensionArray):
             func(npvalues, limit=limit, limit_area=limit_area, mask=mask.T)
             npvalues = npvalues.T
 
-            if copy:
-                new_values = self._from_backing_data(npvalues)
-            else:
-                new_values = self
-
+            return self._from_backing_data(npvalues) if copy else self
         else:
-            if copy:
-                new_values = self.copy()
-            else:
-                new_values = self
-        return new_values
+            return self.copy() if copy else self
 
     @doc(ExtensionArray.fillna)
     def fillna(
@@ -367,20 +358,14 @@ class NDArrayBackedExtensionArray(NDArrayBacked, ExtensionArray):
                 new_values = self._from_backing_data(npvalues)
             else:
                 # fill with value
-                if copy:
-                    new_values = self.copy()
-                else:
-                    new_values = self[:]
+                new_values = self.copy() if copy else self[:]
                 new_values[mask] = value
         else:
             # We validate the fill_value even if there is nothing to fill
             if value is not None:
                 self._validate_setitem_value(value)
 
-            if not copy:
-                new_values = self[:]
-            else:
-                new_values = self.copy()
+            new_values = self[:] if not copy else self.copy()
         return new_values
 
     # ------------------------------------------------------------------------
@@ -493,12 +478,7 @@ class NDArrayBackedExtensionArray(NDArrayBacked, ExtensionArray):
             Series,
         )
 
-        if dropna:
-            # error: Unsupported operand type for ~ ("ExtensionArray")
-            values = self[~self.isna()]._ndarray  # type: ignore[operator]
-        else:
-            values = self._ndarray
-
+        values = self[~self.isna()]._ndarray if dropna else self._ndarray
         result = value_counts(values, sort=False, dropna=dropna)
 
         index_arr = self._from_backing_data(np.asarray(result.index._data))

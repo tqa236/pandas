@@ -141,9 +141,5 @@ def setitem_datetimelike_compat(values: np.ndarray, num_set: int, other):
         if lib.is_np_dtype(dtype, "mM"):
             # https://github.com/numpy/numpy/issues/12550
             #  timedelta64 will incorrectly cast to int
-            if not is_list_like(other):
-                other = [other] * num_set
-            else:
-                other = list(other)
-
+            other = [other] * num_set if not is_list_like(other) else list(other)
     return other

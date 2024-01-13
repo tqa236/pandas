@@ -139,9 +139,7 @@ def sliding_mean(
             result = sum_x / nobs
             if num_consecutive_same_value >= nobs:
                 result = prev_value
-            elif neg_ct == 0 and result < 0:
-                result = 0
-            elif neg_ct == nobs and result > 0:
+            elif neg_ct == 0 and result < 0 or neg_ct == nobs and result > 0:
                 result = 0
         else:
             result = np.nan
@@ -157,7 +155,7 @@ def sliding_mean(
     # na_position is empty list since float64 can already hold nans
     # Do list comprehension, since numba cannot figure out that na_pos is
     # empty list of ints on its own
-    na_pos = [0 for i in range(0)]
+    na_pos = [0 for _ in range(0)]
     return output, na_pos
 
 
@@ -180,10 +178,7 @@ def grouped_mean(
         prev_value = prev_vals[lab]
         sum_x = output[lab]
         if nobs >= min_periods:
-            if num_consecutive_same_value >= nobs:
-                result = prev_value * nobs
-            else:
-                result = sum_x
+            result = prev_value * nobs if num_consecutive_same_value >= nobs else sum_x
         else:
             result = np.nan
         result /= nobs
@@ -192,5 +187,5 @@ def grouped_mean(
     # na_position is empty list since float64 can already hold nans
     # Do list comprehension, since numba cannot figure out that na_pos is
     # empty list of ints on its own
-    na_pos = [0 for i in range(0)]
+    na_pos = [0 for _ in range(0)]
     return output, na_pos

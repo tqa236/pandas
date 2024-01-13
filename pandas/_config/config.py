@@ -138,9 +138,7 @@ def _get_single_key(pat: str, silent: bool) -> str:
     if not silent:
         _warn_if_deprecated(key)
 
-    key = _translate_key(key)
-
-    return key
+    return _translate_key(key)
 
 
 def _get_option(pat: str, silent: bool = False) -> Any:
@@ -248,10 +246,7 @@ class DictWrapper:
             v = object.__getattribute__(self, "d")[key]
         except KeyError as err:
             raise OptionError("No such option") from err
-        if isinstance(v, dict):
-            return DictWrapper(v, prefix)
-        else:
-            return _get_option(prefix)
+        return DictWrapper(v, prefix) if isinstance(v, dict) else _get_option(prefix)
 
     def __dir__(self) -> list[str]:
         return list(self.d.keys())
@@ -538,7 +533,7 @@ def register_option(
     path = key.split(".")
 
     for k in path:
-        if not re.match("^" + tokenize.Name + "$", k):
+        if not re.match(f"^{tokenize.Name}$", k):
             raise ValueError(f"{k} is not a valid identifier")
         if keyword.iskeyword(k):
             raise ValueError(f"{k} is a python keyword")
@@ -627,10 +622,7 @@ def _select_options(pat: str) -> list[str]:
 
     # else look through all of them
     keys = sorted(_registered_options.keys())
-    if pat == "all":  # reserved key
-        return keys
-
-    return [k for k in keys if re.search(pat, k, re.I)]
+    return keys if pat == "all" else [k for k in keys if re.search(pat, k, re.I)]
 
 
 def _get_root(key: str) -> tuple[dict[str, Any], str]:
@@ -679,11 +671,7 @@ def _translate_key(key: str) -> str:
     if key id deprecated and a replacement key defined, will return the
     replacement key, otherwise returns `key` as - is
     """
-    d = _get_deprecated_option(key)
-    if d:
-        return d.rkey or key
-    else:
-        return key
+    return d.rkey or key if (d := _get_deprecated_option(key)) else key
 
 
 def _warn_if_deprecated(key: str) -> bool:
@@ -694,26 +682,25 @@ def _warn_if_deprecated(key: str) -> bool:
     -------
     bool - True if `key` is deprecated, False otherwise.
     """
-    d = _get_deprecated_option(key)
-    if d:
-        if d.msg:
-            warnings.warn(
-                d.msg,
-                FutureWarning,
-                stacklevel=find_stack_level(),
-            )
+    if not (d := _get_deprecated_option(key)):
+        return False
+    if d.msg:
+        warnings.warn(
+            d.msg,
+            FutureWarning,
+            stacklevel=find_stack_level(),
+        )
+    else:
+        msg = f"'{key}' is deprecated"
+        if d.removal_ver:
+            msg += f" and will be removed in {d.removal_ver}"
+        if d.rkey:
+            msg += f", please use '{d.rkey}' instead."
         else:
-            msg = f"'{key}' is deprecated"
-            if d.removal_ver:
-                msg += f" and will be removed in {d.removal_ver}"
-            if d.rkey:
-                msg += f", please use '{d.rkey}' instead."
-            else:
-                msg += ", please refrain from using it."
+            msg += ", please refrain from using it."
 
-            warnings.warn(msg, FutureWarning, stacklevel=find_stack_level())
-        return True
-    return False
+        warnings.warn(msg, FutureWarning, stacklevel=find_stack_level())
+    return True
 
 
 def _build_option_description(k: str) -> str:
@@ -746,7 +733,7 @@ def pp_options_list(keys: Iterable[str], width: int = 80, _print: bool = False):
     from textwrap import wrap
 
     def pp(name: str, ks: Iterable[str]) -> list[str]:
-        pfx = "- " + name + ".[" if name else ""
+        pfx = f"- {name}.[" if name else ""
         ls = wrap(
             ", ".join(ks),
             width,
@@ -755,7 +742,7 @@ def pp_options_list(keys: Iterable[str], width: int = 80, _print: bool = False):
             break_long_words=False,
         )
         if ls and ls[-1] and name:
-            ls[-1] = ls[-1] + "]"
+            ls[-1] = f"{ls[-1]}]"
         return ls
 
     ls: list[str] = []
@@ -910,12 +897,13 @@ def is_nonnegative_int(value: object) -> None:
     ValueError
         When the value is not None or is a negative integer
     """
-    if value is None:
+    if (
+        value is not None
+        and isinstance(value, int)
+        and value >= 0
+        or value is None
+    ):
         return
-
-    elif isinstance(value, int):
-        if value >= 0:
-            return
 
     msg = "Value must be a nonnegative integer or None"
     raise ValueError(msg)

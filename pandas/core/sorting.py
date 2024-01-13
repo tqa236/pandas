@@ -158,7 +158,7 @@ def get_group_index(
         acc = 1
         for i, mul in enumerate(shape):
             acc *= int(mul)
-            if not acc < lib.i8max:
+            if acc >= lib.i8max:
                 return i
         return len(shape)
 
@@ -473,10 +473,7 @@ def nargminmax(values: ExtensionArray, method: str, axis: AxisInt = 0):
 
     if arr_values.ndim > 1:
         if mask.any():
-            if axis == 1:
-                zipped = zip(arr_values, mask)
-            else:
-                zipped = zip(arr_values.T, mask.T)
+            zipped = zip(arr_values, mask) if axis == 1 else zip(arr_values.T, mask.T)
             return np.array([_nanargminmax(v, m, func) for v, m in zipped])
         return func(arr_values, axis=axis)
 
@@ -524,11 +521,7 @@ def _ensure_key_mapped_multiindex(
     """
 
     if level is not None:
-        if isinstance(level, (str, int)):
-            sort_levels = [level]
-        else:
-            sort_levels = level
-
+        sort_levels = [level] if isinstance(level, (str, int)) else level
         sort_levels = [index._get_level_number(lev) for lev in sort_levels]
     else:
         sort_levels = list(range(index.nlevels))  # satisfies mypy

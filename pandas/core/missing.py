@@ -108,17 +108,12 @@ def mask_missing(arr: ArrayLike, values_to_mask) -> npt.NDArray[np.bool_]:
     ):
         pass
     elif (
-        is_bool_dtype(arr.dtype)
-        and is_numeric_dtype(nonna.dtype)
-        and not is_bool_dtype(nonna.dtype)
+        not is_bool_dtype(arr.dtype)
+        or not is_numeric_dtype(nonna.dtype)
+        or is_bool_dtype(nonna.dtype)
     ):
-        pass
-    else:
         for x in nonna:
-            if is_numeric_v_string_like(arr, x):
-                # GH#29553 prevent numpy deprecation warnings
-                pass
-            else:
+            if not is_numeric_v_string_like(arr, x):
                 if potential_na:
                     new_mask = np.zeros(arr.shape, dtype=np.bool_)
                     new_mask[arr_mask] = arr[arr_mask] == x
@@ -205,15 +200,15 @@ SP_METHODS = [
 def clean_interp_method(method: str, index: Index, **kwargs) -> str:
     order = kwargs.get("order")
 
-    if method in ("spline", "polynomial") and order is None:
+    if method in {"spline", "polynomial"} and order is None:
         raise ValueError("You must specify the order of the spline or polynomial.")
 
     valid = NP_METHODS + SP_METHODS
     if method not in valid:
         raise ValueError(f"method must be one of {valid}. Got '{method}' instead.")
 
-    if method in ("krogh", "piecewise_polynomial", "pchip"):
-        if not index.is_monotonic_increasing:
+    if not index.is_monotonic_increasing:
+        if method in {"krogh", "piecewise_polynomial", "pchip"}:
             raise ValueError(
                 f"{method} interpolation requires that the index be monotonic."
             )
@@ -236,7 +231,7 @@ def find_valid_index(how: str, is_valid: npt.NDArray[np.bool_]) -> int | None:
     -------
     int or None
     """
-    assert how in ["first", "last"]
+    assert how in {"first", "last"}
 
     if len(is_valid) == 0:  # early stop
         return None
@@ -252,11 +247,7 @@ def find_valid_index(how: str, is_valid: npt.NDArray[np.bool_]) -> int | None:
 
     chk_notna = is_valid[idxpos]
 
-    if not chk_notna:
-        return None
-    # Incompatible return value type (got "signedinteger[Any]",
-    # expected "Optional[int]")
-    return idxpos  # type: ignore[return-value]
+    return None if not chk_notna else idxpos
 
 
 def validate_limit_direction(
@@ -293,16 +284,13 @@ def infer_limit_direction(
 ) -> Literal["backward", "forward", "both"]:
     # Set `limit_direction` depending on `method`
     if limit_direction is None:
-        if method in ("backfill", "bfill"):
-            limit_direction = "backward"
-        else:
-            limit_direction = "forward"
+        limit_direction = "backward" if method in {"backfill", "bfill"} else "forward"
     else:
-        if method in ("pad", "ffill") and limit_direction != "forward":
+        if method in {"pad", "ffill"} and limit_direction != "forward":
             raise ValueError(
                 f"`limit_direction` must be 'forward' for method `{method}`"
             )
-        if method in ("backfill", "bfill") and limit_direction != "backward":
+        if method in {"backfill", "bfill"} and limit_direction != "backward":
             raise ValueError(
                 f"`limit_direction` must be 'backward' for method `{method}`"
             )
@@ -425,7 +413,7 @@ def _index_to_interp_indices(index: Index, method: str) -> np.ndarray:
     else:
         inds = np.asarray(xarr)
 
-        if method in ("values", "index"):
+        if method in {"values", "index"}:
             if inds.dtype == np.object_:
                 inds = lib.maybe_convert_objects(inds)
 
@@ -456,10 +444,7 @@ def _interpolate_1d(
     -----
     Fills 'yvalues' in-place.
     """
-    if mask is not None:
-        invalid = mask
-    else:
-        invalid = isna(yvalues)
+    invalid = mask if mask is not None else isna(yvalues)
     valid = ~invalid
 
     if not valid.any():
@@ -491,10 +476,10 @@ def _interpolate_1d(
 
     # set preserve_nans based on direction using _interp_limit
     preserve_nans: list | set
-    if limit_direction == "forward":
-        preserve_nans = start_nans | set(_interp_limit(invalid, limit, 0))
-    elif limit_direction == "backward":
+    if limit_direction == "backward":
         preserve_nans = end_nans | set(_interp_limit(invalid, 0, limit))
+    elif limit_direction == "forward":
+        preserve_nans = start_nans | set(_interp_limit(invalid, limit, 0))
     else:
         # both directions... just use _interp_limit
         preserve_nans = set(_interp_limit(invalid, limit, limit))
@@ -587,14 +572,11 @@ def _interpolate_scipy_wrapper(
         "polynomial",
     ]
     if method in interp1d_methods:
-        if method == "polynomial":
-            kind = order
-        else:
-            kind = method
+        kind = order if method == "polynomial" else method
         terp = interpolate.interp1d(
             x, y, kind=kind, fill_value=fill_value, bounds_error=bounds_error
         )
-        new_y = terp(new_x)
+        return terp(new_x)
     elif method == "spline":
         # GH #10633, #24014
         if isna(order) or (order <= 0):
@@ -602,7 +584,7 @@ def _interpolate_scipy_wrapper(
                 f"order needs to be specified and greater than 0; got order: {order}"
             )
         terp = interpolate.UnivariateSpline(x, y, k=order, **kwargs)
-        new_y = terp(new_x)
+        return terp(new_x)
     else:
         # GH 7295: need to be able to write for some reason
         # in some circumstances: check all three
@@ -613,8 +595,7 @@ def _interpolate_scipy_wrapper(
         if not new_x.flags.writeable:
             new_x = new_x.copy()
         terp = alt_methods[method]
-        new_y = terp(x, y, new_x, **kwargs)
-    return new_y
+        return terp(x, y, new_x, **kwargs)
 
 
 def _from_derivatives(
@@ -994,9 +975,6 @@ def _backfill_2d(
 
     if values.size:
         algos.backfill_2d_inplace(values, mask, limit=limit)
-    else:
-        # for test coverage
-        pass
     return values, mask
 
 
@@ -1129,11 +1107,10 @@ def _interp_limit(
             # then we don't even need to care about backwards
             # just use forwards
             return f_idx
-        else:
-            b_idx_inv = list(inner(invalid[::-1], bw_limit))
-            b_idx = set(N - 1 - np.asarray(b_idx_inv))
-            if fw_limit == 0:
-                return b_idx
+        b_idx_inv = list(inner(invalid[::-1], bw_limit))
+        b_idx = set(N - 1 - np.asarray(b_idx_inv))
+        if fw_limit == 0:
+            return b_idx
 
     return f_idx & b_idx
 

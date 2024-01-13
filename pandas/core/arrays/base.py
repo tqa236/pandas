@@ -503,20 +503,16 @@ class ExtensionArray:
         """
         Return for `item in self`.
         """
-        # GH37867
-        # comparisons of any item to pd.NA always return pd.NA, so e.g. "a" in [pd.NA]
-        # would raise a TypeError. The implementation below works around that.
-        if is_scalar(item) and isna(item):
-            if not self._can_hold_na:
-                return False
-            elif item is self.dtype.na_value or isinstance(item, self.dtype.type):
-                return self._hasna
-            else:
-                return False
-        else:
+        if not is_scalar(item) or not isna(item):
             # error: Item "ExtensionArray" of "Union[ExtensionArray, ndarray]" has no
             # attribute "any"
             return (item == self).any()  # type: ignore[union-attr]
+        if not self._can_hold_na:
+            return False
+        elif item is self.dtype.na_value or isinstance(item, self.dtype.type):
+            return self._hasna
+        else:
+            return False
 
     # error: Signature of "__eq__" incompatible with supertype "object"
     def __eq__(self, other: object) -> ArrayLike:  # type: ignore[override]
@@ -703,11 +699,7 @@ class ExtensionArray:
         """
         dtype = pandas_dtype(dtype)
         if dtype == self.dtype:
-            if not copy:
-                return self
-            else:
-                return self.copy()
-
+            return self if not copy else self.copy()
         if isinstance(dtype, ExtensionDtype):
             cls = dtype.construct_array_type()
             return cls._from_sequence(self, dtype=dtype, copy=copy)
@@ -1046,10 +1038,10 @@ class ExtensionArray:
                 indexer = libalgos.get_fill_indexer(npmask[::-1], limit=limit)[::-1]
                 return self[::-1].take(indexer, allow_fill=True)
 
-        else:
-            if not copy:
-                return self
+        elif copy:
             new_values = self.copy()
+        else:
+            return self
         return new_values
 
     def fillna(
@@ -1140,16 +1132,10 @@ class ExtensionArray:
                     return self[::-1].take(indexer, allow_fill=True)
             else:
                 # fill with value
-                if not copy:
-                    new_values = self[:]
-                else:
-                    new_values = self.copy()
+                new_values = self[:] if not copy else self.copy()
                 new_values[mask] = value
         else:
-            if not copy:
-                new_values = self[:]
-            else:
-                new_values = self.copy()
+            new_values = self[:] if not copy else self.copy()
         return new_values
 
     def dropna(self) -> Self:
@@ -1361,18 +1347,15 @@ class ExtensionArray:
         if type(self) != type(other):
             return False
         other = cast(ExtensionArray, other)
-        if self.dtype != other.dtype:
+        if self.dtype != other.dtype or len(self) != len(other):
             return False
-        elif len(self) != len(other):
-            return False
-        else:
-            equal_values = self == other
-            if isinstance(equal_values, ExtensionArray):
-                # boolean array with NA -> fill with False
-                equal_values = equal_values.fillna(False)
-            # error: Unsupported left operand type for & ("ExtensionArray")
-            equal_na = self.isna() & other.isna()  # type: ignore[operator]
-            return bool((equal_values | equal_na).all())
+        equal_values = self == other
+        if isinstance(equal_values, ExtensionArray):
+            # boolean array with NA -> fill with False
+            equal_values = equal_values.fillna(False)
+        # error: Unsupported left operand type for & ("ExtensionArray")
+        equal_na = self.isna() & other.isna()  # type: ignore[operator]
+        return bool((equal_values | equal_na).all())
 
     def isin(self, values: ArrayLike) -> npt.NDArray[np.bool_]:
         """
@@ -1773,9 +1756,7 @@ class ExtensionArray:
         [1*, 2*, 3*, 4*]
         Length: 4, dtype: int64
         """
-        if boxed:
-            return str
-        return repr
+        return str if boxed else repr
 
     # ------------------------------------------------------------------------
     # Reshaping
@@ -2073,9 +2054,7 @@ class ExtensionArray:
         >>> arr.tolist()
         [1, 2, 3]
         """
-        if self.ndim > 1:
-            return [x.tolist() for x in self]
-        return list(self)
+        return [x.tolist() for x in self] if self.ndim > 1 else list(self)
 
     def delete(self, loc: PositionalIndexer) -> Self:
         indexer = np.delete(np.arange(len(self)), loc)
@@ -2137,11 +2116,7 @@ class ExtensionArray:
         'value' should either be a scalar or an arraylike with the same length
         as self.
         """
-        if is_list_like(value):
-            val = value[mask]
-        else:
-            val = value
-
+        val = value[mask] if is_list_like(value) else value
         self[mask] = val
 
     def _where(self, mask: npt.NDArray[np.bool_], value) -> Self:
@@ -2159,11 +2134,7 @@ class ExtensionArray:
         """
         result = self.copy()
 
-        if is_list_like(value):
-            val = value[~mask]
-        else:
-            val = value
-
+        val = value[~mask] if is_list_like(value) else value
         result[~mask] = val
         return result
 
@@ -2366,18 +2337,16 @@ class ExtensionArray:
         kind = WrappedCythonOp.get_kind_from_how(how)
         op = WrappedCythonOp(how=how, kind=kind, has_dropped_na=has_dropped_na)
 
-        # GH#43682
-        if isinstance(self.dtype, StringDtype):
-            # StringArray
-            if op.how not in ["any", "all"]:
-                # Fail early to avoid conversion to object
-                op._get_cython_function(op.kind, op.how, np.dtype(object), False)
-            npvalues = self.to_numpy(object, na_value=np.nan)
-        else:
+        if not isinstance(self.dtype, StringDtype):
             raise NotImplementedError(
                 f"function is not implemented for this dtype: {self.dtype}"
             )
 
+        # StringArray
+        if op.how not in ["any", "all"]:
+            # Fail early to avoid conversion to object
+            op._get_cython_function(op.kind, op.how, np.dtype(object), False)
+        npvalues = self.to_numpy(object, na_value=np.nan)
         res_values = op._cython_op_ndim_compat(
             npvalues,
             min_count=min_count,

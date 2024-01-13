@@ -108,17 +108,13 @@ class StringDtype(StorageExtensionDtype):
     # follows NumPy semantics, which uses nan.
     @property
     def na_value(self) -> libmissing.NAType | float:  # type: ignore[override]
-        if self.storage == "pyarrow_numpy":
-            return np.nan
-        else:
-            return libmissing.NA
+        return np.nan if self.storage == "pyarrow_numpy" else libmissing.NA
 
     _metadata = ("storage",)
 
     def __init__(self, storage=None) -> None:
         if storage is None:
-            infer_string = get_option("future.infer_string")
-            if infer_string:
+            if infer_string := get_option("future.infer_string"):
                 storage = "pyarrow_numpy"
             else:
                 storage = get_option("mode.string_storage")
@@ -198,10 +194,10 @@ class StringDtype(StorageExtensionDtype):
             ArrowStringArrayNumpySemantics,
         )
 
-        if self.storage == "python":
-            return StringArray
-        elif self.storage == "pyarrow":
+        if self.storage == "pyarrow":
             return ArrowStringArray
+        elif self.storage == "python":
+            return StringArray
         else:
             return ArrowStringArrayNumpySemantics
 
@@ -222,12 +218,7 @@ class StringDtype(StorageExtensionDtype):
         else:
             import pyarrow
 
-            if isinstance(array, pyarrow.Array):
-                chunks = [array]
-            else:
-                # pyarrow.ChunkedArray
-                chunks = array.chunks
-
+            chunks = [array] if isinstance(array, pyarrow.Array) else array.chunks
             results = []
             for arr in chunks:
                 # convert chunk by chunk to numpy and concatenate then, to avoid
@@ -258,9 +249,7 @@ class BaseStringArray(ExtensionArray):
 
     @doc(ExtensionArray.tolist)
     def tolist(self) -> list:
-        if self.ndim > 1:
-            return [x.tolist() for x in self]
-        return list(self.to_numpy())
+        return [x.tolist() for x in self] if self.ndim > 1 else list(self.to_numpy())
 
     @classmethod
     def _from_scalars(cls, scalars, dtype: DtypeObj) -> Self:
@@ -487,10 +476,7 @@ class StringArray(BaseStringArray, NumpyExtensionArray):  # type: ignore[misc]
         dtype = pandas_dtype(dtype)
 
         if dtype == self.dtype:
-            if copy:
-                return self.copy()
-            return self
-
+            return self.copy() if copy else self
         elif isinstance(dtype, IntegerDtype):
             arr = self._ndarray.copy()
             mask = self.isna()
@@ -519,7 +505,7 @@ class StringArray(BaseStringArray, NumpyExtensionArray):  # type: ignore[misc]
     def _reduce(
         self, name: str, *, skipna: bool = True, axis: AxisInt | None = 0, **kwargs
     ):
-        if name in ["min", "max"]:
+        if name in {"min", "max"}:
             return getattr(self, name)(skipna=skipna, axis=axis)
 
         raise TypeError(f"Cannot perform reduction '{name}' with string dtype")
@@ -547,9 +533,7 @@ class StringArray(BaseStringArray, NumpyExtensionArray):  # type: ignore[misc]
 
     def memory_usage(self, deep: bool = False) -> int:
         result = self._ndarray.nbytes
-        if deep:
-            return result + lib.memory_usage_of_objects(self._ndarray)
-        return result
+        return result + lib.memory_usage_of_objects(self._ndarray) if deep else result
 
     @doc(ExtensionArray.searchsorted)
     def searchsorted(
@@ -618,11 +602,7 @@ class StringArray(BaseStringArray, NumpyExtensionArray):  # type: ignore[misc]
 
         if is_integer_dtype(dtype) or is_bool_dtype(dtype):
             constructor: type[IntegerArray | BooleanArray]
-            if is_integer_dtype(dtype):
-                constructor = IntegerArray
-            else:
-                constructor = BooleanArray
-
+            constructor = IntegerArray if is_integer_dtype(dtype) else BooleanArray
             na_value_is_na = isna(na_value)
             if na_value_is_na:
                 na_value = 1

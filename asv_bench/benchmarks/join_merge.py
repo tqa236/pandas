@@ -98,17 +98,20 @@ class ConcatIndexDtype:
 
         idx = Index(vals, dtype=dtype)
 
-        if structure == "monotonic":
-            idx = idx.sort_values()
-        elif structure == "non_monotonic":
-            idx = idx[::-1]
-        elif structure == "has_na":
-            if not idx._can_hold_na:
-                raise NotImplementedError
-            idx = Index([None], dtype=dtype).append(idx)
-        else:
+        if (
+            structure != "monotonic"
+            and structure != "non_monotonic"
+            and structure == "has_na"
+            and not idx._can_hold_na
+            or structure not in ["monotonic", "non_monotonic", "has_na"]
+        ):
             raise NotImplementedError
-
+        elif structure not in ["monotonic", "non_monotonic"]:
+            idx = Index([None], dtype=dtype).append(idx)
+        elif structure == "monotonic":
+            idx = idx.sort_values()
+        else:
+            idx = idx[::-1]
         self.series = [Series(i, idx[:-i]) for i in range(1, 6)]
 
     def time_concat_series(self, dtype, structure, axis, sort):

@@ -370,11 +370,9 @@ class IntervalArray(IntervalMixin, ExtensionArray):
         right = ensure_wrapped_if_datetimelike(right)
         right = extract_array(right, extract_numpy=True)
 
-        if isinstance(left, ArrowExtensionArray) or isinstance(
+        if not isinstance(left, ArrowExtensionArray) and not isinstance(
             right, ArrowExtensionArray
         ):
-            pass
-        else:
             lbase = getattr(left, "_ndarray", left)
             lbase = getattr(lbase, "_data", lbase).base
             rbase = getattr(right, "_ndarray", right)
@@ -809,13 +807,12 @@ class IntervalArray(IntervalMixin, ExtensionArray):
             try:
                 result[i] = op(self[i], obj)
             except TypeError:
-                if obj is NA:
-                    # comparison with np.nan returns NA
-                    # github.com/pandas-dev/pandas/pull/37124#discussion_r509095092
-                    result = result.astype(object)
-                    result[i] = NA
-                else:
+                if obj is not NA:
                     raise
+                # comparison with np.nan returns NA
+                # github.com/pandas-dev/pandas/pull/37124#discussion_r509095092
+                result = result.astype(object)
+                result[i] = NA
         return result
 
     @unpack_zerodim_and_defer("__eq__")
@@ -944,7 +941,7 @@ class IntervalArray(IntervalMixin, ExtensionArray):
         -------
         filled : IntervalArray with NA/NaN filled
         """
-        if copy is False:
+        if not copy:
             raise NotImplementedError
         if method is not None:
             return super().fillna(value=value, method=method, limit=limit)
@@ -1576,10 +1573,7 @@ class IntervalArray(IntervalMixin, ExtensionArray):
 
         result = np.empty(len(left), dtype=object)
         for i, left_value in enumerate(left):
-            if mask[i]:
-                result[i] = np.nan
-            else:
-                result[i] = Interval(left_value, right[i], closed)
+            result[i] = np.nan if mask[i] else Interval(left_value, right[i], closed)
         return result
 
     def __arrow_array__(self, type=None):
@@ -1835,15 +1829,13 @@ class IntervalArray(IntervalMixin, ExtensionArray):
         # has no attribute "reshape"  [union-attr]
         left = self.left._values.reshape(-1, 1)  # type: ignore[union-attr]
         right = self.right._values.reshape(-1, 1)  # type: ignore[union-attr]
-        if needs_i8_conversion(left.dtype):
-            # error: Item "ndarray[Any, Any]" of "Any | ndarray[Any, Any]" has
-            # no attribute "_concat_same_type"
-            comb = left._concat_same_type(  # type: ignore[union-attr]
+        return (
+            left._concat_same_type(  # type: ignore[union-attr]
                 [left, right], axis=1
             )
-        else:
-            comb = np.concatenate([left, right], axis=1)
-        return comb
+            if needs_i8_conversion(left.dtype)
+            else np.concatenate([left, right], axis=1)
+        )
 
     def _from_combined(self, combined: np.ndarray) -> IntervalArray:
         """

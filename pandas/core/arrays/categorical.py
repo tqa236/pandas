@@ -436,11 +436,7 @@ class Categorical(NDArrayBackedExtensionArray, PandasObject, ObjectStringArrayMi
                     arr_list = [values[idx] for idx in np.where(~null_mask)[0]]
 
                     # GH#44900 Do not cast to float if we have only missing values
-                    if arr_list or arr.dtype == "object":
-                        sanitize_dtype = None
-                    else:
-                        sanitize_dtype = arr.dtype
-
+                    sanitize_dtype = None if arr_list or arr.dtype == "object" else arr.dtype
                     arr = sanitize_array(arr_list, None, dtype=sanitize_dtype)
                 values = arr
 
@@ -2141,9 +2137,7 @@ class Categorical(NDArrayBackedExtensionArray, PandasObject, ObjectStringArrayMi
         return self._ndarray
 
     def _box_func(self, i: int):
-        if i == -1:
-            return np.nan
-        return self.categories[i]
+        return np.nan if i == -1 else self.categories[i]
 
     def _unbox_scalar(self, key) -> int:
         # searchsorted is very performance sensitive. By converting codes
@@ -2253,8 +2247,7 @@ class Categorical(NDArrayBackedExtensionArray, PandasObject, ObjectStringArrayMi
 
         fmt_values = [i.strip() for i in fmt_values]
         joined = ", ".join(fmt_values)
-        result = "[" + joined + "]"
-        return result
+        return f"[{joined}]"
 
     def __repr__(self) -> str:
         """
@@ -2271,17 +2264,15 @@ class Categorical(NDArrayBackedExtensionArray, PandasObject, ObjectStringArrayMi
             tail = self[-(max_len - num) :]._get_values_repr()
             body = f"{head[:-1]}, ..., {tail[1:]}"
             length_info = f"Length: {len(self)}"
-            result = f"{body}\n{length_info}\n{footer}"
+            return f"{body}\n{length_info}\n{footer}"
         elif length > 0:
             body = self._get_values_repr()
-            result = f"{body}\n{footer}"
+            return f"{body}\n{footer}"
         else:
             # In the empty case we use a comma instead of newline to get
             #  a more compact __repr__
             body = "[]"
-            result = f"{body}, {footer}"
-
-        return result
+            return f"{body}, {footer}"
 
     # ------------------------------------------------------------------
 
@@ -2359,13 +2350,10 @@ class Categorical(NDArrayBackedExtensionArray, PandasObject, ObjectStringArrayMi
         self, name: str, *, skipna: bool = True, keepdims: bool = False, **kwargs
     ):
         result = super()._reduce(name, skipna=skipna, keepdims=keepdims, **kwargs)
-        if name in ["argmax", "argmin"]:
+        if name in {"argmax", "argmin"}:
             # don't wrap in Categorical!
             return result
-        if keepdims:
-            return type(self)(result, dtype=self.dtype)
-        else:
-            return result
+        return type(self)(result, dtype=self.dtype) if keepdims else result
 
     def min(self, *, skipna: bool = True, **kwargs):
         """
@@ -2390,13 +2378,12 @@ class Categorical(NDArrayBackedExtensionArray, PandasObject, ObjectStringArrayMi
             return self.dtype.na_value
 
         good = self._codes != -1
-        if not good.all():
-            if skipna and good.any():
-                pointer = self._codes[good].min()
-            else:
-                return np.nan
-        else:
+        if good.all():
             pointer = self._codes.min()
+        elif skipna and good.any():
+            pointer = self._codes[good].min()
+        else:
+            return np.nan
         return self._wrap_reduction_result(None, pointer)
 
     def max(self, *, skipna: bool = True, **kwargs):
@@ -2422,26 +2409,21 @@ class Categorical(NDArrayBackedExtensionArray, PandasObject, ObjectStringArrayMi
             return self.dtype.na_value
 
         good = self._codes != -1
-        if not good.all():
-            if skipna and good.any():
-                pointer = self._codes[good].max()
-            else:
-                return np.nan
-        else:
+        if good.all():
             pointer = self._codes.max()
+        elif skipna and good.any():
+            pointer = self._codes[good].max()
+        else:
+            return np.nan
         return self._wrap_reduction_result(None, pointer)
 
     def _mode(self, dropna: bool = True) -> Categorical:
         codes = self._codes
-        mask = None
-        if dropna:
-            mask = self.isna()
-
+        mask = self.isna() if dropna else None
         res_codes = algorithms.mode(codes, mask=mask)
         res_codes = cast(np.ndarray, res_codes)
         assert res_codes.dtype == codes.dtype
-        res = self._from_backing_data(res_codes)
-        return res
+        return self._from_backing_data(res_codes)
 
     # ------------------------------------------------------------------
     # ExtensionArray Interface
@@ -2513,7 +2495,7 @@ class Categorical(NDArrayBackedExtensionArray, PandasObject, ObjectStringArrayMi
 
         if axis == 1:
             # Flatten, concatenate then reshape
-            if not all(x.ndim == 2 for x in to_concat):
+            if any(x.ndim != 2 for x in to_concat):
                 raise ValueError
 
             # pass correctly-shaped to union_categoricals
@@ -2523,11 +2505,8 @@ class Categorical(NDArrayBackedExtensionArray, PandasObject, ObjectStringArrayMi
 
             res_flat = cls._concat_same_type(tc_flat, axis=0)
 
-            result = res_flat.reshape(len(first), -1, order="F")
-            return result
-
-        result = union_categoricals(to_concat)
-        return result
+            return res_flat.reshape(len(first), -1, order="F")
+        return union_categoricals(to_concat)
 
     # ------------------------------------------------------------------
 
@@ -2684,9 +2663,7 @@ class Categorical(NDArrayBackedExtensionArray, PandasObject, ObjectStringArrayMi
                 FutureWarning,
                 stacklevel=find_stack_level(),
             )
-        if not inplace:
-            return cat
-        return None
+        return cat if not inplace else None
 
     # ------------------------------------------------------------------------
     # String methods interface
@@ -2728,9 +2705,9 @@ class Categorical(NDArrayBackedExtensionArray, PandasObject, ObjectStringArrayMi
         op = WrappedCythonOp(how=how, kind=kind, has_dropped_na=has_dropped_na)
 
         dtype = self.dtype
-        if how in ["sum", "prod", "cumsum", "cumprod", "skew"]:
+        if how in {"sum", "prod", "cumsum", "cumprod", "skew"}:
             raise TypeError(f"{dtype} type does not support {how} operations")
-        if how in ["min", "max", "rank", "idxmin", "idxmax"] and not dtype.ordered:
+        if how in {"min", "max", "rank", "idxmin", "idxmax"} and not dtype.ordered:
             # raise TypeError instead of NotImplementedError to ensure we
             #  don't go down a group-by-group path, since in the empty-groups
             #  case that would fail to raise
@@ -2755,7 +2732,7 @@ class Categorical(NDArrayBackedExtensionArray, PandasObject, ObjectStringArrayMi
         if how == "rank":
             assert self.ordered  # checked earlier
             npvalues = self._ndarray
-        elif how in ["first", "last", "min", "max", "idxmin", "idxmax"]:
+        elif how in {"first", "last", "min", "max", "idxmin", "idxmax"}:
             npvalues = self._ndarray
             result_mask = np.zeros(ngroups, dtype=bool)
         else:
@@ -2774,7 +2751,7 @@ class Categorical(NDArrayBackedExtensionArray, PandasObject, ObjectStringArrayMi
 
         if how in op.cast_blocklist:
             return res_values
-        elif how in ["first", "last", "min", "max"]:
+        elif how in {"first", "last", "min", "max"}:
             res_values[result_mask == 1] = -1
         return self._from_backing_data(res_values)
 
@@ -2995,22 +2972,16 @@ def recode_for_categories(
     >>> recode_for_categories(codes, old_cat, new_cat)
     array([ 1,  0,  0, -1], dtype=int8)
     """
-    if len(old_categories) == 0:
-        # All null anyway, so just retain the nulls
-        if copy:
-            return codes.copy()
-        return codes
-    elif new_categories.equals(old_categories):
-        # Same categories, so no need to actually recode
-        if copy:
-            return codes.copy()
-        return codes
-
+    if (
+        len(old_categories) == 0
+        or len(old_categories) != 0
+        and new_categories.equals(old_categories)
+    ):
+        return codes.copy() if copy else codes
     indexer = coerce_indexer_dtype(
         new_categories.get_indexer_for(old_categories), new_categories
     )
-    new_codes = take_nd(indexer, codes, fill_value=-1)
-    return new_codes
+    return take_nd(indexer, codes, fill_value=-1)
 
 
 def factorize_from_iterable(values) -> tuple[np.ndarray, Index]:

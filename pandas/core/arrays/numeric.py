@@ -190,11 +190,7 @@ def _coerce_to_data_and_mask(
         raise TypeError("mask must be a 1D list-like")
 
     # infer dtype if needed
-    if dtype is None:
-        dtype = default_dtype
-    else:
-        dtype = dtype.numpy_dtype
-
+    dtype = default_dtype if dtype is None else dtype.numpy_dtype
     if is_integer_dtype(dtype) and values.dtype.kind == "f" and len(values) > 0:
         if mask.all():
             values = np.ones(values.shape, dtype=dtype)

@@ -304,8 +304,7 @@ class Apply(metaclass=abc.ABCMeta):
             return self._apply_str(obj, func, *args, **kwargs)
 
         if not args and not kwargs:
-            f = com.get_cython_func(func)
-            if f:
+            if f := com.get_cython_func(func):
                 warn_alias_replacement(obj, func, f)
                 return getattr(obj, f)()
 
@@ -586,16 +585,7 @@ class Apply(metaclass=abc.ABCMeta):
                 raise ValueError(f"Operation {func} does not support axis=1")
             if "axis" in arg_names:
                 if isinstance(obj, (SeriesGroupBy, DataFrameGroupBy)):
-                    # Try to avoid FutureWarning for deprecated axis keyword;
-                    # If self.axis matches the axis we would get by not passing
-                    #  axis, we safely exclude the keyword.
-
-                    default_axis = 0
-                    if func in ["idxmax", "idxmin"]:
-                        # DataFrameGroupBy.idxmax, idxmin axis defaults to self.axis,
-                        # whereas other axis keywords default to 0
-                        default_axis = self.obj.axis
-
+                    default_axis = self.obj.axis if func in ["idxmax", "idxmin"] else 0
                     if default_axis != self.axis:
                         self.kwargs["axis"] = self.axis
                 else:
@@ -643,7 +633,7 @@ class Apply(metaclass=abc.ABCMeta):
         that a nested renamer is not passed. Also normalizes to all lists
         when values consists of a mix of list and non-lists.
         """
-        assert how in ("apply", "agg", "transform")
+        assert how in {"apply", "agg", "transform"}
 
         # Can't use func.values(); wouldn't work for a Series
         if (
@@ -669,12 +659,10 @@ class Apply(metaclass=abc.ABCMeta):
         # be list-likes
         # Cannot use func.values() because arg may be a Series
         if any(isinstance(x, aggregator_types) for _, x in func.items()):
-            new_func: AggFuncTypeDict = {}
-            for k, v in func.items():
-                if not isinstance(v, aggregator_types):
-                    new_func[k] = [v]
-                else:
-                    new_func[k] = v
+            new_func: AggFuncTypeDict = {
+                k: [v] if not isinstance(v, aggregator_types) else v
+                for k, v in func.items()
+            }
             func = new_func
         return func
 
@@ -694,8 +682,8 @@ class Apply(metaclass=abc.ABCMeta):
 
             # people may aggregate on a non-callable attribute
             # but don't let them think they can pass args to it
-            assert len(args) == 0
-            assert len([kwarg for kwarg in kwargs if kwarg not in ["axis"]]) == 0
+            assert not args
+            assert not [kwarg for kwarg in kwargs if kwarg not in ["axis"]]
             return f
         elif hasattr(np, func) and hasattr(obj, "__array__"):
             # in particular exclude Window
@@ -742,8 +730,7 @@ class NDFrameApply(Apply):
             raise NotImplementedError("axis other than 0 is not supported")
 
         keys, results = self.compute_list_like(op_name, obj, kwargs)
-        result = self.wrap_results_list_like(keys, results)
-        return result
+        return self.wrap_results_list_like(keys, results)
 
     def agg_or_apply_dict_like(
         self, op_name: Literal["agg", "apply"]
@@ -754,7 +741,7 @@ class NDFrameApply(Apply):
         kwargs = {}
         if op_name == "apply":
             by_row = "_compat" if self.by_row else False
-            kwargs.update({"by_row": by_row})
+            kwargs["by_row"] = by_row
 
         if getattr(obj, "axis", 0) == 1:
             raise NotImplementedError("axis other than 0 is not supported")
@@ -763,8 +750,7 @@ class NDFrameApply(Apply):
         result_index, result_data = self.compute_dict_like(
             op_name, obj, selection, kwargs
         )
-        result = self.wrap_results_dict_like(obj, result_index, result_data)
-        return result
+        return self.wrap_results_dict_like(obj, result_index, result_data)
 
 
 class FrameApply(NDFrameApply):
@@ -974,15 +960,14 @@ class FrameApply(NDFrameApply):
             else:
                 should_reduce = not isinstance(r, Series)
 
-        if should_reduce:
-            if len(self.agg_axis):
-                r = self.func(Series([], dtype=np.float64), *self.args, **self.kwargs)
-            else:
-                r = np.nan
-
-            return self.obj._constructor_sliced(r, index=self.agg_axis)
-        else:
+        if not should_reduce:
             return self.obj.copy()
+        r = (
+            self.func(Series([], dtype=np.float64), *self.args, **self.kwargs)
+            if len(self.agg_axis)
+            else np.nan
+        )
+        return self.obj._constructor_sliced(r, index=self.agg_axis)
 
     def apply_raw(self, engine="python", engine_kwargs=None):
         """apply to the values as a numpy array"""
@@ -1053,11 +1038,9 @@ class FrameApply(NDFrameApply):
 
             result_values[:, i] = res
 
-        # we *always* preserve the original index / columns
-        result = self.obj._constructor(
+        return self.obj._constructor(
             result_values, index=target.index, columns=target.columns
         )
-        return result
 
     def apply_standard(self):
         if self.engine == "python":
@@ -1342,17 +1325,12 @@ class FrameColumnApply(FrameApply):
         result: DataFrame | Series
 
         # we have requested to expand
-        if self.result_type == "expand":
+        if self.result_type == "expand" or isinstance(results[0], ABCSeries):
             result = self.infer_to_same_shape(results, res_index)
 
-        # we have a non-series and don't want inference
-        elif not isinstance(results[0], ABCSeries):
+        else:
             result = self.obj._constructor_sliced(results)
             result.index = res_index
-
-        # we may want to infer results
-        else:
-            result = self.infer_to_same_shape(results, res_index)
 
         return result
 
@@ -1364,10 +1342,7 @@ class FrameColumnApply(FrameApply):
         # set the index
         result.index = res_index
 
-        # infer dtypes
-        result = result.infer_objects(copy=False)
-
-        return result
+        return result.infer_objects(copy=False)
 
 
 class SeriesApply(NDFrameApply):
@@ -1570,8 +1545,7 @@ class GroupByApply(Apply):
             obj, "as_index", True, condition=hasattr(obj, "as_index")
         ):
             keys, results = self.compute_list_like(op_name, selected_obj, kwargs)
-        result = self.wrap_results_list_like(keys, results)
-        return result
+        return self.wrap_results_list_like(keys, results)
 
     def agg_or_apply_dict_like(
         self, op_name: Literal["agg", "apply"]
@@ -1587,7 +1561,7 @@ class GroupByApply(Apply):
         kwargs = {}
         if op_name == "apply":
             by_row = "_compat" if self.by_row else False
-            kwargs.update({"by_row": by_row})
+            kwargs["by_row"] = by_row
 
         if getattr(obj, "axis", 0) == 1:
             raise NotImplementedError("axis other than 0 is not supported")
@@ -1609,8 +1583,7 @@ class GroupByApply(Apply):
             result_index, result_data = self.compute_dict_like(
                 op_name, selected_obj, selection, kwargs
             )
-        result = self.wrap_results_dict_like(selected_obj, result_index, result_data)
-        return result
+        return self.wrap_results_dict_like(selected_obj, result_index, result_data)
 
 
 class ResamplerWindowApply(GroupByApply):

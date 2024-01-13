@@ -135,8 +135,7 @@ class PandasObject(DirNamesMixin):
         Generates the total memory usage for an object that returns
         either a value or Series of values
         """
-        memory_usage = getattr(self, "memory_usage", None)
-        if memory_usage:
+        if memory_usage := getattr(self, "memory_usage", None):
             mem = memory_usage(deep=True)  # pylint: disable=not-callable
             return int(mem if is_scalar(mem) else mem.sum())
 
@@ -736,17 +735,16 @@ class IndexOpsMixin(OpsMixin):
         skipna = nv.validate_argmax_with_skipna(skipna, args, kwargs)
 
         if isinstance(delegate, ExtensionArray):
-            if not skipna and delegate.isna().any():
-                warnings.warn(
-                    f"The behavior of {type(self).__name__}.argmax/argmin "
-                    "with skipna=False and NAs, or with all-NAs is deprecated. "
-                    "In a future version this will raise ValueError.",
-                    FutureWarning,
-                    stacklevel=find_stack_level(),
-                )
-                return -1
-            else:
+            if skipna or not delegate.isna().any():
                 return delegate.argmax()
+            warnings.warn(
+                f"The behavior of {type(self).__name__}.argmax/argmin "
+                "with skipna=False and NAs, or with all-NAs is deprecated. "
+                "In a future version this will raise ValueError.",
+                FutureWarning,
+                stacklevel=find_stack_level(),
+            )
+            return -1
         else:
             result = nanops.nanargmax(delegate, skipna=skipna)
             if result == -1:
@@ -770,17 +768,16 @@ class IndexOpsMixin(OpsMixin):
         skipna = nv.validate_argmin_with_skipna(skipna, args, kwargs)
 
         if isinstance(delegate, ExtensionArray):
-            if not skipna and delegate.isna().any():
-                warnings.warn(
-                    f"The behavior of {type(self).__name__}.argmax/argmin "
-                    "with skipna=False and NAs, or with all-NAs is deprecated. "
-                    "In a future version this will raise ValueError.",
-                    FutureWarning,
-                    stacklevel=find_stack_level(),
-                )
-                return -1
-            else:
+            if skipna or not delegate.isna().any():
                 return delegate.argmin()
+            warnings.warn(
+                f"The behavior of {type(self).__name__}.argmax/argmin "
+                "with skipna=False and NAs, or with all-NAs is deprecated. "
+                "In a future version this will raise ValueError.",
+                FutureWarning,
+                stacklevel=find_stack_level(),
+            )
+            return -1
         else:
             result = nanops.nanargmin(delegate, skipna=skipna)
             if result == -1:
@@ -1018,12 +1015,11 @@ class IndexOpsMixin(OpsMixin):
 
     def unique(self):
         values = self._values
-        if not isinstance(values, np.ndarray):
-            # i.e. ExtensionArray
-            result = values.unique()
-        else:
-            result = algorithms.unique1d(values)
-        return result
+        return (
+            values.unique()
+            if not isinstance(values, np.ndarray)
+            else algorithms.unique1d(values)
+        )
 
     @final
     def nunique(self, dropna: bool = True) -> int:

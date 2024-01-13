@@ -214,12 +214,8 @@ class NumpyExtensionArray(  # type: ignore[misc]
         dtype = pandas_dtype(dtype)
 
         if dtype == self.dtype:
-            if copy:
-                return self.copy()
-            return self
-
-        result = astype_array(self._ndarray, dtype=dtype, copy=copy)
-        return result
+            return self.copy() if copy else self
+        return astype_array(self._ndarray, dtype=dtype, copy=copy)
 
     def isna(self) -> np.ndarray:
         return isna(self._ndarray)
@@ -231,10 +227,7 @@ class NumpyExtensionArray(  # type: ignore[misc]
         return fill_value
 
     def _values_for_factorize(self) -> tuple[np.ndarray, float | None]:
-        if self.dtype.kind in "iub":
-            fv = None
-        else:
-            fv = np.nan
+        fv = None if self.dtype.kind in "iub" else np.nan
         return self._ndarray, fv
 
     # Base EA class (and all other EA classes) don't have limit_area keyword
@@ -251,11 +244,7 @@ class NumpyExtensionArray(  # type: ignore[misc]
         """
         ffill or bfill along axis=0.
         """
-        if copy:
-            out_data = self._ndarray.copy()
-        else:
-            out_data = self._ndarray
-
+        out_data = self._ndarray.copy() if copy else self._ndarray
         meth = missing.clean_fill_method(method)
         missing.pad_or_backfill_inplace(
             out_data.T,
@@ -265,9 +254,7 @@ class NumpyExtensionArray(  # type: ignore[misc]
             limit_area=limit_area,
         )
 
-        if not copy:
-            return self
-        return type(self)._simple_new(out_data, dtype=self.dtype)
+        return self if not copy else type(self)._simple_new(out_data, dtype=self.dtype)
 
     def interpolate(
         self,
@@ -285,11 +272,7 @@ class NumpyExtensionArray(  # type: ignore[misc]
         See NDFrame.interpolate.__doc__.
         """
         # NB: we return type(self) even if copy=False
-        if not copy:
-            out_data = self._ndarray
-        else:
-            out_data = self._ndarray.copy()
-
+        out_data = self._ndarray if not copy else self._ndarray.copy()
         # TODO: assert we have floating dtype?
         missing.interpolate_2d_inplace(
             out_data,
@@ -301,9 +284,7 @@ class NumpyExtensionArray(  # type: ignore[misc]
             limit_area=limit_area,
             **kwargs,
         )
-        if not copy:
-            return self
-        return type(self)._simple_new(out_data, dtype=self.dtype)
+        return self if not copy else type(self)._simple_new(out_data, dtype=self.dtype)
 
     # ------------------------------------------------------------------------
     # Reductions
