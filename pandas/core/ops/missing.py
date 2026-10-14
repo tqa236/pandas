@@ -23,13 +23,20 @@ from numpy in the following ways:
 from __future__ import annotations
 
 import operator
+from typing import (
+    TYPE_CHECKING,
+    Any,
+)
 
 import numpy as np
 
 from pandas.core import roperator
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
-def _fill_zeros(result: np.ndarray, x, y) -> np.ndarray:
+
+def _fill_zeros(result: np.ndarray, x: Any, y: Any) -> np.ndarray:
     """
     If this is a reversed op, then flip x,y
 
@@ -67,7 +74,7 @@ def _fill_zeros(result: np.ndarray, x, y) -> np.ndarray:
     return result
 
 
-def mask_zero_div_zero(x, y, result: np.ndarray) -> np.ndarray:
+def mask_zero_div_zero(x: Any, y: Any, result: np.ndarray) -> np.ndarray:
     """
     Set results of  0 // 0 to np.nan, regardless of the dtypes
     of the numerator or the denominator.
@@ -127,7 +134,9 @@ def mask_zero_div_zero(x, y, result: np.ndarray) -> np.ndarray:
     return result
 
 
-def dispatch_fill_zeros(op, left, right, result):
+def dispatch_fill_zeros(
+    op: Callable[..., Any], left: Any, right: Any, result: Any
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     """
     Call _fill_zeros with the appropriate fill value depending on the operation,
     with special logic for divmod and rdivmod.

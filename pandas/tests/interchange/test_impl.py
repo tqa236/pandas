@@ -429,8 +429,8 @@ def test_interchange_from_corrected_buffer_dtypes(monkeypatch) -> None:
         buffer_dtype[3],
     )
     buffers["data"] = (buffers_data[0], buffer_dtype)
-    column.get_buffers = lambda: buffers
-    interchange.get_column_by_name = lambda _: column
+    monkeypatch.setattr(column, "get_buffers", lambda: buffers)
+    monkeypatch.setattr(interchange, "get_column_by_name", lambda _: column)
     monkeypatch.setattr(df, "__dataframe__", lambda allow_copy: interchange)
     with tm.assert_produces_warning(Pandas4Warning, match="Interchange"):
         pd.api.interchange.from_dataframe(df)

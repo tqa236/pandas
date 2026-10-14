@@ -370,7 +370,7 @@ class NDArrayBackedExtensionArray(NDArrayBacked, ExtensionArray):
                 raise ValueError(*err.args) from err
             raise
 
-    def _validate_setitem_value(self, value):
+    def _validate_setitem_value(self, value: object) -> Any:
         return value
 
     @overload

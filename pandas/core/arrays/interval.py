@@ -1191,7 +1191,7 @@ class IntervalArray(IntervalMixin, ExtensionArray):
             )
         return left, right
 
-    def _validate_setitem_value(self, value):
+    def _validate_setitem_value(self, value: object) -> Any:
         if is_list_like(value):
             return self._validate_listlike(value)
 

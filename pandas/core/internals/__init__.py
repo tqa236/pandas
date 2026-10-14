@@ -1,3 +1,5 @@
+from typing import Any
+
 from pandas.core.internals.api import make_block  # 2023-09-18 pyarrow uses this
 from pandas.core.internals.concat import concatenate_managers
 from pandas.core.internals.managers import (
@@ -16,7 +18,7 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     # GH#55139
     import warnings
 

@@ -1681,7 +1681,7 @@ def can_hold_element(arr: ArrayLike, element: Any) -> bool:
                 "PeriodArray | DatetimeArray | TimedeltaArray | IntervalArray", arr
             )
             try:
-                arr._validate_setitem_value(element)  # type: ignore[no-untyped-call]
+                arr._validate_setitem_value(element)
                 return True
             except (ValueError, TypeError):
                 return False

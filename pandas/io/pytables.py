@@ -142,7 +142,7 @@ if TYPE_CHECKING:
         npt,
     )
 
-    from pandas.core.internals import Block
+    from pandas.core.internals.blocks import Block
 
     _WhereArg: TypeAlias = dict[Any, Any] | list[Any] | tuple[Any, ...] | str
 

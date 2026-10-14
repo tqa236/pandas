@@ -39,7 +39,7 @@ _NP_DTYPES: dict[DtypeKind, dict[int, Any]] = {
 
 
 @set_module("pandas.api.interchange")
-def from_dataframe(df, allow_copy: bool = True) -> pd.DataFrame:
+def from_dataframe(df: Any, allow_copy: bool = True) -> pd.DataFrame:
     """
     Build a ``pd.DataFrame`` from any DataFrame supporting the interchange protocol.
 
@@ -396,7 +396,9 @@ def string_column_to_ndarray(col: Column) -> tuple[np.ndarray, Any]:
     return res, buffers  # type: ignore[return-value]
 
 
-def parse_datetime_format_str(format_str, data) -> pd.Series | np.ndarray:
+def parse_datetime_format_str(
+    format_str: str, data: np.ndarray
+) -> pd.Series | np.ndarray:
     """Parse datetime `format_str` to interpret the `data`."""
     # timestamp 'ts{unit}:tz'
     timestamp_meta = re.match(r"ts([smun]):(.*)", format_str)

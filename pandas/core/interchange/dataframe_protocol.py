@@ -150,7 +150,7 @@ class Buffer(ABC):
         """
 
     @abstractmethod
-    def __dlpack__(self):
+    def __dlpack__(self) -> Any:
         """
         Produce DLPack capsule (see array API standard).
 
@@ -383,7 +383,9 @@ class DataFrame(ABC):
     version = 0  # version of the protocol
 
     @abstractmethod
-    def __dataframe__(self, nan_as_null: bool = False, allow_copy: bool = True):
+    def __dataframe__(
+        self, nan_as_null: bool = False, allow_copy: bool = True
+    ) -> DataFrame:
         """Construct a new interchange object, potentially changing the parameters."""
 
     @property

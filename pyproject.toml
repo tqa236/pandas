@@ -581,22 +581,17 @@ module = [
   "pandas.core.indexes.api", # TODO
   "pandas.core.indexes.datetimelike", # TODO
   "pandas.core.indexes.datetimes", # TODO
-  "pandas.core.indexes.extension", # TODO
   "pandas.core.indexes.interval", # TODO
   "pandas.core.indexes.multi", # TODO
   "pandas.core.indexes.period", # TODO
   "pandas.core.indexes.timedeltas", # TODO
   "pandas.core.interchange.column", # TODO
-  "pandas.core.interchange.dataframe_protocol", # TODO
-  "pandas.core.interchange.from_dataframe", # TODO
-  "pandas.core.internals", # TODO
   "pandas.core.internals.blocks", # TODO
   "pandas.core.internals.concat", # TODO
   "pandas.core.internals.construction", # TODO
   "pandas.core.internals.managers", # TODO
   "pandas.core.ops.array_ops", # TODO
   "pandas.core.ops.common", # TODO
-  "pandas.core.ops.missing", # TODO
   "pandas.core.reshape.*", # TODO
   "pandas.core.strings.*", # TODO
   "pandas.core.tools.*", # TODO
@@ -623,7 +618,6 @@ module = [
   "pandas.io.excel._odfreader", # TODO
   "pandas.io.excel._openpyxl", # TODO
   "pandas.io.excel._xlrd", # TODO
-  "pandas.io.excel._xlsxwriter", # TODO
   "pandas.io.formats.excel", # TODO
   "pandas.io.formats.format", # TODO
   "pandas.io.formats.style", # TODO

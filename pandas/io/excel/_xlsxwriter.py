@@ -13,6 +13,8 @@ from pandas.io.excel._util import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from xlsxwriter import Workbook
 
     from pandas._typing import (
@@ -21,6 +23,8 @@ if TYPE_CHECKING:
         StorageOptions,
         WriteExcelBuffer,
     )
+
+    from pandas.io.formats.excel import ExcelCell
 
 
 class _XlsxStyler:
@@ -95,7 +99,9 @@ class _XlsxStyler:
     }
 
     @classmethod
-    def convert(cls, style_dict, num_format_str=None) -> dict[str, Any]:
+    def convert(
+        cls, style_dict: dict[str, Any] | None, num_format_str: str | None = None
+    ) -> dict[str, Any]:
         """
         converts a style_dict to an xlsxwriter format dict
 
@@ -105,7 +111,7 @@ class _XlsxStyler:
         num_format_str : optional number format string
         """
         # Create an XlsxWriter format object.
-        props = {}
+        props: dict[str, Any] = {}
 
         if num_format_str is not None:
             props["num_format"] = num_format_str
@@ -193,7 +199,7 @@ class XlsxWriter(ExcelWriter["Workbook"]):
         storage_options: StorageOptions | None = None,
         if_sheet_exists: ExcelWriterIfSheetExists | None = None,
         engine_kwargs: dict[str, Any] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         # Use the xlsxwriter module as the Excel writer.
         from xlsxwriter import Workbook
@@ -242,7 +248,7 @@ class XlsxWriter(ExcelWriter["Workbook"]):
 
     def _write_cells(
         self,
-        cells,
+        cells: Iterable[ExcelCell],
         sheet_name: str | None = None,
         startrow: int = 0,
         startcol: int = 0,

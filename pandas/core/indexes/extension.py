@@ -34,7 +34,7 @@ class ExtensionIndex(Index):
 
     # ---------------------------------------------------------------------
 
-    def _validate_fill_value(self, value):
+    def _validate_fill_value(self, value: object) -> object:
         """
         Convert value to be insertable to underlying array.
         """
